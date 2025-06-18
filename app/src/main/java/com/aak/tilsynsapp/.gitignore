@@ -1,0 +1,3 @@
+# Ignore secrets
+**/Secrets.kt
+Secrets.kt
