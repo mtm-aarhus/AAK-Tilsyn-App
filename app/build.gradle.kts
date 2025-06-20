@@ -53,6 +53,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
 
 
+
     // JSON serialization/deserialization
     implementation(libs.gson)
     implementation(libs.androidx.ui.text)

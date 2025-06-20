@@ -7,7 +7,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -90,6 +92,22 @@ fun EditNyFakturaScreen(
                     }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Tilbage")
                     }
+                },
+                actions = {
+                    if (isEditable && hasUnsavedChanges) {
+                        IconButton(onClick = {
+                            val updated = row.copy(
+                                kvadratmeter = kvadratmeter.replace(",", ".").toFloatOrNull(),
+                                tilladelsestype = tilladelsestype,
+                                slutdato = runCatching {
+                                    backendFormat.format(formatter.parse(slutdatoText)!!)
+                                }.getOrNull()
+                            )
+                            onSubmit(updated, null)
+                        }) {
+                            Icon(Icons.Default.Save, contentDescription = "Gem kladde")
+                        }
+                    }
                 }
             )
         }
@@ -103,7 +121,7 @@ fun EditNyFakturaScreen(
                 .padding(padding)
                 .padding(16.dp)
         ) {
-        listOf(
+            listOf(
                 "Adresse" to row.adresse,
                 "Forseelse" to row.forseelse,
                 "Firmanavn" to row.firmanavn,
@@ -133,7 +151,6 @@ fun EditNyFakturaScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            // 🛠 Slutdato editable or read-only
             if (status == "Ny") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -153,7 +170,7 @@ fun EditNyFakturaScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     IconButton(onClick = {
                         val calendar = Calendar.getInstance()
-                        runCatching { formatter.parse(slutdatoText) }?.getOrNull()?.let {
+                        runCatching { formatter.parse(slutdatoText) }.getOrNull()?.let {
                             calendar.time = it
                         }
                         DatePickerDialog(
@@ -208,9 +225,8 @@ fun EditNyFakturaScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
 
-            // 🛠 Tilladelsestype editable or read-only
             if (status == "Ny") {
                 var expanded by remember { mutableStateOf(false) }
 
@@ -226,7 +242,7 @@ fun EditNyFakturaScreen(
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .menuAnchor()
+                            .menuAnchor(type = MenuAnchorType.PrimaryEditable, enabled = true)
                     )
 
                     ExposedDropdownMenu(
@@ -258,54 +274,50 @@ fun EditNyFakturaScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // 🛠 Status-dependent buttons
             when (status) {
                 "Ny" -> {
-                    Row(
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Button(
-                            onClick = {
-                                val updated = row.copy(
-                                    kvadratmeter = kvadratmeter.replace(",", ".").toFloatOrNull(),
-                                    tilladelsestype = tilladelsestype,
-                                    slutdato = runCatching {
-                                        backendFormat.format(formatter.parse(slutdatoText)!!)
-                                    }.getOrNull()
-                                )
-                                onSubmit(updated, "Til fakturering")
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) { Text("Send til fakturering") }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    val updated = row.copy(
+                                        kvadratmeter = kvadratmeter.replace(",", ".").toFloatOrNull(),
+                                        tilladelsestype = tilladelsestype,
+                                        slutdato = runCatching {
+                                            backendFormat.format(formatter.parse(slutdatoText)!!)
+                                        }.getOrNull()
+                                    )
+                                    onSubmit(updated, "Fakturer ikke")
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Fakturer ikke")
+                            }
 
-                        Button(
-                            onClick = {
-                                val updated = row.copy(
-                                    kvadratmeter = kvadratmeter.replace(",", ".").toFloatOrNull(),
-                                    tilladelsestype = tilladelsestype,
-                                    slutdato = runCatching {
-                                        backendFormat.format(formatter.parse(slutdatoText)!!)
-                                    }.getOrNull()
-                                )
-                                onSubmit(updated, "Fakturer ikke")
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) { Text("Fakturer ikke") }
+                            Button(
+                                onClick = {
+                                    val updated = row.copy(
+                                        kvadratmeter = kvadratmeter.replace(",", ".").toFloatOrNull(),
+                                        tilladelsestype = tilladelsestype,
+                                        slutdato = runCatching {
+                                            backendFormat.format(formatter.parse(slutdatoText)!!)
+                                        }.getOrNull()
+                                    )
+                                    onSubmit(updated, "Til fakturering")
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Send til fakturering")
+                            }
 
-                        Button(
-                            onClick = {
-                                val updated = row.copy(
-                                    kvadratmeter = kvadratmeter.replace(",", ".").toFloatOrNull(),
-                                    tilladelsestype = tilladelsestype,
-                                    slutdato = runCatching {
-                                        backendFormat.format(formatter.parse(slutdatoText)!!)
-                                    }.getOrNull()
-                                )
-                                onSubmit(updated, null)
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) { Text("Gem kladde") }
+                        }
+
                     }
                 }
 

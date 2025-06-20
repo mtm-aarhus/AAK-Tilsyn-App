@@ -5,11 +5,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.*
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -127,16 +127,14 @@ fun VejmanMainScreen(viewModel: VejmanViewModel, onNavigateToRegelrytteren: () -
                                 value = selectedFilter,
                                 onValueChange = {},
                                 readOnly = true,
-                                singleLine = true,
+                                label = { Text("Status") }, // optional
                                 trailingIcon = {
-                                    Icon(Icons.Filled.ArrowDropDown, contentDescription = "Åbn filter")
+                                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = filterExpanded)
                                 },
-                                textStyle = LocalTextStyle.current.copy(color = LocalContentColor.current),
                                 modifier = Modifier
-                                    .menuAnchor()
-                                    .width(185.dp)
+                                    .menuAnchor(type = MenuAnchorType.PrimaryEditable)
+                                    .width(180.dp)
                                     .height(64.dp)
-                                    .padding(top = 8.dp)
                             )
 
                             ExposedDropdownMenu(
@@ -155,6 +153,7 @@ fun VejmanMainScreen(viewModel: VejmanViewModel, onNavigateToRegelrytteren: () -
                                 }
                             }
                         }
+
                     }
 
                     if (loading != null) {
@@ -194,22 +193,33 @@ fun VejmanMainScreen(viewModel: VejmanViewModel, onNavigateToRegelrytteren: () -
                                 Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(vertical = 6.dp)
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
                                         .clickable { selectedRow.value = row },
                                     colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                        containerColor = MaterialTheme.colorScheme.surfaceContainer
                                     ),
                                     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                                 ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        Text(text = "Adresse: ${row.adresse ?: "-"}")
-                                        Text(text = "Firma: ${row.firmanavn ?: "-"}")
-                                        Text(
-                                            text = "Start: ${formatDate(row.startdato)} → Slut: ${formatDate(row.slutdato)}"
-                                        )
-                                        Text(text = "Afstand: ${row.distanceFromCurrent?.toInt() ?: "?"} m")
-                                    }
+                                    ListItem(
+                                        headlineContent = {
+                                            Text(row.adresse ?: "Ukendt adresse", style = MaterialTheme.typography.titleMedium)
+                                        },
+                                        supportingContent = {
+                                            Column {
+                                                Text("Firma: ${row.firmanavn ?: "-"}")
+                                                Text("Dato: ${formatDate(row.startdato)} – ${formatDate(row.slutdato)}")
+                                            }
+                                        },
+                                        trailingContent = {
+                                            Text(
+                                                "${row.distanceFromCurrent?.toInt() ?: "?"} m",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    )
                                 }
+
                             }
                         }
                     }
