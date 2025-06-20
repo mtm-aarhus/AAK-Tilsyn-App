@@ -24,10 +24,12 @@ fun VejmanMainScreen(viewModel: VejmanViewModel, onNavigateToRegelrytteren: () -
     val rows by viewModel.rows.collectAsState()
     val loading by viewModel.loadingStatus.collectAsState()
     val loginState by viewModel.loginState.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
     val selectedRow = remember { mutableStateOf<VejmanKassenRow?>(null) }
 
     val coroutineScope = rememberCoroutineScope()
     val searchQuery = remember { mutableStateOf("") }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     var filterExpanded by remember { mutableStateOf(false) }
     var selectedFilter by remember { mutableStateOf("Ny") }
@@ -38,15 +40,12 @@ fun VejmanMainScreen(viewModel: VejmanViewModel, onNavigateToRegelrytteren: () -
                 it.firmanavn?.contains(searchQuery.value, ignoreCase = true) == true
     }
 
-    // Pull-to-refresh state
     val pullRefreshState = rememberPullToRefreshState()
-    var isRefreshing by remember { mutableStateOf(false) }
-
     val onRefresh = {
-        coroutineScope.launch {
-            isRefreshing = true
-            viewModel.refreshDataAsync()
-            isRefreshing = false
+        if (!isRefreshing) {
+            coroutineScope.launch {
+                viewModel.refreshDataAsync()
+            }
         }
     }
 
@@ -64,12 +63,29 @@ fun VejmanMainScreen(viewModel: VejmanViewModel, onNavigateToRegelrytteren: () -
             row = selectedRow.value!!,
             onBack = { selectedRow.value = null },
             onSubmit = { updatedRow, newStatus ->
-                viewModel.updateRow(updatedRow, newStatus)
-                selectedRow.value = null
+                coroutineScope.launch {
+                    val success = viewModel.updateRow(updatedRow, newStatus)
+                    selectedRow.value = null
+                    if (success) {
+                        viewModel.preloadAndMaybeRefresh(force = true)
+                        snackbarHostState.showSnackbar("Rækken er opdateret")
+                    } else {
+                        snackbarHostState.showSnackbar("Fejl under opdatering", withDismissAction = true)
+                    }
+                }
             }
         )
     } else {
         Scaffold(
+            snackbarHost = {
+                SnackbarHost(snackbarHostState) { data ->
+                    Snackbar(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        snackbarData = data
+                    )
+                }
+            },
             bottomBar = {
                 NavigationBar {
                     NavigationBarItem(
@@ -93,7 +109,7 @@ fun VejmanMainScreen(viewModel: VejmanViewModel, onNavigateToRegelrytteren: () -
                     .padding(innerPadding),
                 isRefreshing = isRefreshing,
                 state = pullRefreshState,
-                onRefresh = { onRefresh() },
+                onRefresh = onRefresh,
                 indicator = {
                     PullToRefreshDefaults.Indicator(
                         isRefreshing = isRefreshing,
@@ -121,13 +137,15 @@ fun VejmanMainScreen(viewModel: VejmanViewModel, onNavigateToRegelrytteren: () -
 
                         ExposedDropdownMenuBox(
                             expanded = filterExpanded,
-                            onExpandedChange = { filterExpanded = !filterExpanded }
+                            onExpandedChange = {
+                                if (!isRefreshing) filterExpanded = !filterExpanded
+                            }
                         ) {
                             OutlinedTextField(
                                 value = selectedFilter,
                                 onValueChange = {},
                                 readOnly = true,
-                                label = { Text("Status") }, // optional
+                                label = { Text("Status") },
                                 trailingIcon = {
                                     ExposedDropdownMenuDefaults.TrailingIcon(expanded = filterExpanded)
                                 },
@@ -153,7 +171,6 @@ fun VejmanMainScreen(viewModel: VejmanViewModel, onNavigateToRegelrytteren: () -
                                 }
                             }
                         }
-
                     }
 
                     if (loading != null) {
@@ -178,7 +195,7 @@ fun VejmanMainScreen(viewModel: VejmanViewModel, onNavigateToRegelrytteren: () -
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("Der er ingen fakturaer i \"$selectedFilter\"")
                                 Spacer(modifier = Modifier.height(16.dp))
-                                Button(onClick = { onRefresh() }) {
+                                Button(onClick = onRefresh) {
                                     Text("Opdater data")
                                 }
                             }
@@ -219,7 +236,6 @@ fun VejmanMainScreen(viewModel: VejmanViewModel, onNavigateToRegelrytteren: () -
                                         }
                                     )
                                 }
-
                             }
                         }
                     }

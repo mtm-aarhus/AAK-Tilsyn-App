@@ -69,7 +69,7 @@ object ApiHelper {
 
             val requestBody = gson.toJson(payload).toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
-                .url("https://pyorchestrator.aarhuskommune.dk/api/queue")
+                .url("${Secrets.API_URL}queue")
                 .post(requestBody)
                 .addHeader("X-API-Key", Secrets.API_KEY)
                 .addHeader("Content-Type", "application/json")

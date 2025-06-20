@@ -6,7 +6,6 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -36,6 +35,9 @@ class VejmanViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _activeFilter = MutableStateFlow("Ny")
     val activeFilter: StateFlow<String> = _activeFilter
+
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing
 
     private var lastRefreshTime: Long = 0L
 
@@ -69,13 +71,15 @@ class VejmanViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     suspend fun fetchAllRowsAndCache() {
+        _isRefreshing.value = true
         _loadingStatus.value = "Henter fakturaer..."
         Log.d("Refresh", "Fetching all statuses")
 
-        val ny = ApiHelper.getRowsByStatus("Ny") ?: emptyList()
+
         val tilFakturering = ApiHelper.getRowsByStatus("Til fakturering") ?: emptyList()
         val fakturerIkke = ApiHelper.getRowsByStatus("Fakturer ikke") ?: emptyList()
         val faktureret = ApiHelper.getRowsByStatus("Faktureret") ?: emptyList()
+        val ny = ApiHelper.getRowsByStatus("Ny") ?: emptyList()
 
         dao.clearAll()
         dao.insertAll(ny + tilFakturering + fakturerIkke + faktureret)
@@ -87,10 +91,10 @@ class VejmanViewModel(application: Application) : AndroidViewModel(application) 
             "Faktureret" to faktureret
         )
         _allRows.value = all
-        _rows.value = all["Ny"] ?: emptyList()
-        _activeFilter.value = "Ny"
+        _rows.value = all[_activeFilter.value] ?: emptyList()
         lastRefreshTime = System.currentTimeMillis()
         _loadingStatus.value = null
+        _isRefreshing.value = false
     }
 
     fun refreshDataAsync() {
@@ -154,29 +158,27 @@ class VejmanViewModel(application: Application) : AndroidViewModel(application) 
         _loginState.value = LoginState.Input
     }
 
-    fun updateRow(updatedRow: VejmanKassenRow, newStatus: String?) {
-        viewModelScope.launch {
-            val updates = mutableMapOf<String, Any?>()
+    suspend fun updateRow(updatedRow: VejmanKassenRow, newStatus: String?): Boolean {
+        val updates = mutableMapOf<String, Any?>()
+        updatedRow.kvadratmeter?.let { updates["kvadratmeter"] = it }
+        updatedRow.tilladelsestype?.let { updates["tilladelsestype"] = it }
+        updatedRow.slutdato?.let { updates["slutdato"] = it }
+        newStatus?.let { updates["fakturaStatus"] = it }
 
-            updatedRow.kvadratmeter?.let { updates["kvadratmeter"] = it }
-            updatedRow.tilladelsestype?.let { updates["tilladelsestype"] = it }
-            updatedRow.slutdato?.let { updates["slutdato"] = it }
-            newStatus?.let { updates["fakturaStatus"] = it }
+        val success = ApiHelper.updateRow(updatedRow.id, updates)
+        if (success) {
+            val newRow = updatedRow.copy(fakturaStatus = newStatus ?: updatedRow.fakturaStatus)
+            dao.updateRow(newRow)
 
-            val success = ApiHelper.updateRow(updatedRow.id, updates)
-            if (success) {
-                val newRow = updatedRow.copy(fakturaStatus = newStatus ?: updatedRow.fakturaStatus)
-                dao.updateRow(newRow)
-
-                val all = _allRows.value.toMutableMap()
-                val status = newRow.fakturaStatus ?: "Ny"
-                val updatedList = all[status]?.map {
-                    if (it.id == newRow.id) newRow else it
-                } ?: listOf(newRow)
-                all[status] = updatedList
-                _allRows.value = all
-                setActiveFilter(_activeFilter.value)
-            }
+            val all = _allRows.value.toMutableMap()
+            val status = newRow.fakturaStatus ?: "Ny"
+            val updatedList = all[status]?.map {
+                if (it.id == newRow.id) newRow else it
+            } ?: listOf(newRow)
+            all[status] = updatedList
+            _allRows.value = all
+            setActiveFilter(_activeFilter.value)
         }
+        return success
     }
 }
