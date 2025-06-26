@@ -11,6 +11,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import okhttp3.OkHttpClient
+import java.util.logging.Level
+import java.util.logging.Logger
 
 class MainActivity : ComponentActivity() {
     private val viewModel: VejmanViewModel by viewModels()
@@ -20,7 +23,7 @@ class MainActivity : ComponentActivity() {
         val isDarkTheme = (resources.configuration.uiMode and
                 android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
 
-
+        Logger.getLogger(OkHttpClient::class.java.name).level = Level.FINE
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = android.graphics.Color.TRANSPARENT
 
