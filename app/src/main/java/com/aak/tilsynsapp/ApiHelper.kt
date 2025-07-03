@@ -1,5 +1,6 @@
 package com.aak.tilsynsapp
 
+import android.content.Context
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -13,20 +14,22 @@ import okhttp3.RequestBody.Companion.toRequestBody
 object ApiHelper {
     private val gson = Gson()
     private val client = OkHttpClient.Builder()
-        .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-        .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .connectTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
         .build()
 
-    suspend fun getRowsByStatus(status: String): List<VejmanKassenRow>? = withContext(Dispatchers.IO) {
+    suspend fun getRowsByStatus(context: Context, status: String): List<VejmanKassenRow>? = withContext(Dispatchers.IO) {
         try {
+            val apiKey = SecurePrefs.getApiKey(context) ?: return@withContext null
+
             val jsonBody = gson.toJson(mapOf("status" to status))
             val requestBody = jsonBody.toRequestBody("application/json".toMediaType())
 
             val request = Request.Builder()
-                .url("${Secrets.API_URL}vejmankassen")
+                .url("${BuildConfig.API_URL}vejmankassen")
                 .post(requestBody)
-                .addHeader("X-API-Key", Secrets.API_KEY)
+                .addHeader("X-API-Key", apiKey)
                 .addHeader("Content-Type", "application/json")
                 .build()
 
@@ -50,12 +53,15 @@ object ApiHelper {
     }
 
     suspend fun sendRegelrytterenPayload(
+        context: Context,
         bikes: Int,
         cars: Int,
         vejman: Boolean,
         henstillinger: Boolean
     ): String = withContext(Dispatchers.IO) {
         try {
+            val apiKey = SecurePrefs.getApiKey(context) ?: return@withContext "Ingen API-nøgle fundet"
+
             val payload = mapOf(
                 "queue_name" to "RegelRytteren",
                 "status" to "NEW",
@@ -69,9 +75,9 @@ object ApiHelper {
 
             val requestBody = gson.toJson(payload).toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
-                .url("${Secrets.API_URL}queue")
+                .url("${BuildConfig.API_URL}queue")
                 .post(requestBody)
-                .addHeader("X-API-Key", Secrets.API_KEY)
+                .addHeader("X-API-Key", apiKey)
                 .addHeader("Content-Type", "application/json")
                 .build()
 
@@ -88,22 +94,31 @@ object ApiHelper {
         }
     }
 
-
-
-    suspend fun updateRow(id: Int, updates: Map<String, Any?>): Boolean = withContext(Dispatchers.IO) {
+    suspend fun updateRow(context: Context, id: Int, updates: Map<String, Any?>): Boolean = withContext(Dispatchers.IO) {
         try {
+            val apiKey = SecurePrefs.getApiKey(context) ?: return@withContext false
+
             val bodyData = updates.toMutableMap().apply { put("id", id) }
             val requestBody = gson.toJson(bodyData).toRequestBody("application/json".toMediaType())
 
             val request = Request.Builder()
-                .url("${Secrets.API_URL}vejmankassen/update")
+                .url("${BuildConfig.API_URL}vejmankassen/update")
                 .post(requestBody)
-                .addHeader("X-API-Key", Secrets.API_KEY)
+                .addHeader("X-API-Key", apiKey)
                 .addHeader("Content-Type", "application/json")
                 .build()
 
-            val response = client.newCall(request).execute()
-            return@withContext response.isSuccessful
+            client.newCall(request).execute().use { response ->
+                val responseBody = response.body?.string()
+                if (!response.isSuccessful) {
+                    Log.e("ApiHelper", "Update failed (${response.code}): ${response.message}")
+                    Log.e("ApiHelper", "Response body: $responseBody")
+                    return@withContext false
+                }
+
+                Log.d("ApiHelper", "Update successful. Response: $responseBody")
+                return@withContext true
+            }
 
         } catch (e: Exception) {
             Log.e("ApiHelper", "Update Exception: ${e.message}", e)
@@ -114,12 +129,12 @@ object ApiHelper {
     suspend fun sendLoginRequest(email: String): String? = withContext(Dispatchers.IO) {
         try {
             val json = gson.toJson(mapOf("email" to email))
-            Log.d("ApiHelper", "Sending login to: ${Secrets.API_URL}auth/request-link with payload: $json")
+            Log.d("ApiHelper", "Sending login to: ${BuildConfig.API_URL}auth/request-link with payload: $json")
 
             val requestBody = json.toRequestBody("application/json".toMediaType())
 
             val request = Request.Builder()
-                .url("${Secrets.API_URL}auth/request-link")
+                .url("${BuildConfig.API_URL}auth/request-link")
                 .post(requestBody)
                 .addHeader("Content-Type", "application/json")
                 .build()
@@ -146,7 +161,7 @@ object ApiHelper {
             val requestBody = json.toRequestBody("application/json".toMediaType())
 
             val request = Request.Builder()
-                .url("${Secrets.API_URL}auth/check")
+                .url("${BuildConfig.API_URL}auth/check")
                 .post(requestBody)
                 .addHeader("Content-Type", "application/json")
                 .build()
@@ -165,7 +180,7 @@ object ApiHelper {
                 val keyFromServer = map["api_key"] as? String
 
                 if (authorized && !keyFromServer.isNullOrBlank()) {
-                    Log.d("ApiHelper", "Received API key from server: $keyFromServer")
+                    Log.d("ApiHelper", "Received API key from server")
                     return@withContext keyFromServer
                 }
 
@@ -178,6 +193,4 @@ object ApiHelper {
             return@withContext null
         }
     }
-
-
 }

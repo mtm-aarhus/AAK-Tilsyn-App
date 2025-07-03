@@ -74,13 +74,13 @@ fun LoginScreen(viewModel: VejmanViewModel) {
         }
 
         is LoginState.Waiting -> {
-            val pollingAttempts = remember { mutableStateOf(0) }
+            val pollingAttempts = remember { mutableIntStateOf(0) }
             val pollingMessage = remember { mutableStateOf("Venter på godkendelse...") }
 
             LaunchedEffect(Unit) {
                 while (true) {
                     delay(3000)
-                    pollingAttempts.value++
+                    pollingAttempts.intValue++
                     pollingMessage.value = "Afventer godkendelse ..."
                     val token = viewModel.loadSavedToken()
                     if (token != null) {

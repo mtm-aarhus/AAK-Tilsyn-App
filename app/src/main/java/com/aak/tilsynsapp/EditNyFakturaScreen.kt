@@ -170,9 +170,16 @@ fun EditNyFakturaScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     IconButton(onClick = {
                         val calendar = Calendar.getInstance()
-                        runCatching { formatter.parse(slutdatoText) }.getOrNull()?.let {
-                            calendar.time = it
+
+                        val parsedSlutdato = runCatching { formatter.parse(slutdatoText) }.getOrNull()
+                        val parsedStartdato = parsedStartDate
+
+                        if (parsedSlutdato == null || (parsedStartdato != null && parsedSlutdato == parsedStartdato)) {
+                            calendar.time = Date()
+                        } else {
+                            calendar.time = parsedSlutdato
                         }
+
                         DatePickerDialog(
                             context,
                             { _, y, m, d ->
@@ -188,6 +195,7 @@ fun EditNyFakturaScreen(
                     }) {
                         Icon(Icons.Default.DateRange, contentDescription = "Vælg dato")
                     }
+
                 }
             } else {
                 OutlinedTextField(

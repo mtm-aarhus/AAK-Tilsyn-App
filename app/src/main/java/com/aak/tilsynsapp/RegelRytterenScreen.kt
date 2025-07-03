@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -23,6 +24,7 @@ fun RegelRytterenScreen(
     onBack: () -> Unit
 
 ) {
+    val context = LocalContext.current
     val bikes by viewModel.bikes.collectAsState()
     val cars by viewModel.cars.collectAsState()
     val vejman by viewModel.vejman.collectAsState()
@@ -32,7 +34,7 @@ fun RegelRytterenScreen(
 
     var isSubmitting by remember { mutableStateOf(false) }
     var successLockout by remember { mutableStateOf(false) }
-    var countdown by remember { mutableStateOf(300) }
+    var countdown by remember { mutableIntStateOf(300) }
 
     // Timer countdown effect
     LaunchedEffect(successLockout) {
@@ -131,17 +133,17 @@ fun RegelRytterenScreen(
                             }
                             isSubmitting = true
                             val success = ApiHelper.sendRegelrytterenPayload(
+                                context = context,
                                 bikes = bikes,
                                 cars = cars,
                                 vejman = vejman,
                                 henstillinger = henstillinger
                             )
-                            viewModel.updateStatusMessage(success ?: "Uventet fejl ved netværkskaldet")
+                            viewModel.updateStatusMessage(success)
                             isSubmitting = false
-                            if (success != null) {
-                                successLockout = true
-                                snackbarHostState.showSnackbar(success, duration = SnackbarDuration.Long)
-                            }
+                            successLockout = true
+                            snackbarHostState.showSnackbar(success, duration = SnackbarDuration.Long)
+
                         }
                     },
                     enabled = !isSubmitting && !successLockout

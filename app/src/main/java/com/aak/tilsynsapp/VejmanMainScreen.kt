@@ -13,6 +13,7 @@ import androidx.compose.material3.MenuAnchorType
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -21,6 +22,8 @@ import java.util.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VejmanMainScreen(viewModel: VejmanViewModel, onNavigateToRegelrytteren: () -> Unit) {
+    val context = LocalContext.current
+
     val rows by viewModel.rows.collectAsState()
     val loading by viewModel.loadingStatus.collectAsState()
     val loginState by viewModel.loginState.collectAsState()
@@ -64,7 +67,7 @@ fun VejmanMainScreen(viewModel: VejmanViewModel, onNavigateToRegelrytteren: () -
             onBack = { selectedRow.value = null },
             onSubmit = { updatedRow, newStatus ->
                 coroutineScope.launch {
-                    val success = viewModel.updateRow(updatedRow, newStatus)
+                    val success = viewModel.updateRow(context, updatedRow, newStatus)
                     selectedRow.value = null
                     if (success) {
                         viewModel.preloadAndMaybeRefresh(force = true)
@@ -229,7 +232,7 @@ fun VejmanMainScreen(viewModel: VejmanViewModel, onNavigateToRegelrytteren: () -
                                         },
                                         trailingContent = {
                                             Text(
-                                                "${row.distanceFromCurrent?.toInt() ?: "?"} m",
+                                                "${row.distanceFromCurrent?.toInt() ?: ""}",
                                                 style = MaterialTheme.typography.labelMedium,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )

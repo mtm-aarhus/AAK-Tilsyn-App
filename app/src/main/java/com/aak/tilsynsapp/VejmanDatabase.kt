@@ -19,7 +19,7 @@ abstract class VejmanDatabase : RoomDatabase() {
                     context.applicationContext,
                     VejmanDatabase::class.java,
                     "vejman_database"
-                ).fallbackToDestructiveMigration().build()
+                ).fallbackToDestructiveMigration(true).build()
                 INSTANCE = instance
                 instance
             }

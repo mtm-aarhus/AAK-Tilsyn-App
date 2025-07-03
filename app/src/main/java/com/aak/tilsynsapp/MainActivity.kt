@@ -25,6 +25,7 @@ class MainActivity : ComponentActivity() {
 
         Logger.getLogger(OkHttpClient::class.java.name).level = Level.FINE
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        @Suppress("DEPRECATION")
         window.statusBarColor = android.graphics.Color.TRANSPARENT
 
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = !isDarkTheme

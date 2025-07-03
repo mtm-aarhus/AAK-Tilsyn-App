@@ -16,7 +16,6 @@ class RegelRytterenViewModel(application: Application) : AndroidViewModel(applic
     val cars: StateFlow<Int> = _cars
     val vejman: StateFlow<Boolean> = _vejman
     val henstillinger: StateFlow<Boolean> = _henstillinger
-    val statusMessage: StateFlow<String?> = _statusMessage
 
     fun setBikes(value: Int) { _bikes.value = value }
     fun setCars(value: Int) { _cars.value = value }
