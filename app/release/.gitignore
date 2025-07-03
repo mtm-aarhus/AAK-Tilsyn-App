@@ -2,3 +2,6 @@ app-release.apk
 *.apk
 *app-release.dm
 */*.apk
+app-release.aab
+*.aab
+*/*.aab
