@@ -33,10 +33,10 @@ fun EditNyFakturaScreen(
     val isEditable = status == "Ny"
 
     val formatter = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
-    val backendFormat = SimpleDateFormat("EEE, dd MMM yyyy", Locale.ENGLISH)
+    val backendFormat = SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH)
 
     val parsedStartDate = remember(row.startdato) {
-        try { row.startdato?.let { backendFormat.parse(it) } } catch (e: Exception) { null }
+        try { row.startdato?.let { backendFormat.parse(it) } } catch (_: Exception) { null }
     }
 
     var kvadratmeter by remember { mutableStateOf(row.kvadratmeter?.toString() ?: "") }

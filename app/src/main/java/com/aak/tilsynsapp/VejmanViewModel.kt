@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
+
 sealed class LoginState {
     object Input : LoginState()
     data class Waiting(val email: String) : LoginState()
@@ -64,8 +65,10 @@ class VejmanViewModel(application: Application) : AndroidViewModel(application) 
             } else {
                 val cached = dao.getAll()
                 val grouped = cached.groupBy { it.fakturaStatus ?: "Ukendt" }
+
                 _allRows.value = grouped
                 setActiveFilter("Ny")
+
             }
             _loadingStatus.value = null
         }
@@ -90,6 +93,7 @@ class VejmanViewModel(application: Application) : AndroidViewModel(application) 
             "Fakturer ikke" to fakturerIkke,
             "Faktureret" to faktureret
         )
+
         _allRows.value = all
         _rows.value = all[_activeFilter.value] ?: emptyList()
         lastRefreshTime = System.currentTimeMillis()
@@ -191,7 +195,14 @@ class VejmanViewModel(application: Application) : AndroidViewModel(application) 
             return false
         }
 
-        val success = ApiHelper.updateRow(context,updatedRow.id, updates)
+        val success = ApiHelper.updateRow(
+            context = context,
+            id = updatedRow.id,
+            updates = updates,
+            oldStatus = originalRow?.fakturaStatus ?: updatedRow.fakturaStatus,
+            newStatus = newStatus ?: updatedRow.fakturaStatus
+        )
+
         if (!success) {
             Log.e("UpdateRow", "API update failed for ID ${updatedRow.id}")
             return false

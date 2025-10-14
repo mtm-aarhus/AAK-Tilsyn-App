@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @Composable
 fun RegelRytterenScreen(
@@ -92,18 +93,29 @@ fun RegelRytterenScreen(
 
             Text("Cykler: $bikes")
             Slider(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
                 value = bikes.toFloat(),
-                onValueChange = { viewModel.setBikes(it.toInt()) },
-                valueRange = 0f..10f,
-                steps = 9
+                onValueChange = { raw ->
+                    val snapped = raw.roundToInt().coerceIn(0, 10)
+                    if (snapped != bikes) viewModel.setBikes(snapped)
+                },
+                valueRange = 0f..10f
             )
+
 
             Text("Biler: $cars")
             Slider(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
                 value = cars.toFloat(),
-                onValueChange = { viewModel.setCars(it.toInt()) },
-                valueRange = 0f..10f,
-                steps = 9
+                onValueChange = { raw ->
+                    val snapped = raw.roundToInt().coerceIn(0, 10)
+                    if (snapped != cars) viewModel.setCars(snapped)
+                },
+                valueRange = 0f..10f
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {

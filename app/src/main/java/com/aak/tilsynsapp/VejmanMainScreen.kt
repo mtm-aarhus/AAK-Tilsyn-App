@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -38,10 +39,21 @@ fun VejmanMainScreen(viewModel: VejmanViewModel, onNavigateToRegelrytteren: () -
     var selectedFilter by remember { mutableStateOf("Ny") }
     val filterOptions = listOf("Ny", "Til fakturering", "Fakturer ikke", "Faktureret")
 
-    val filteredRows = rows.filter {
-        it.adresse?.contains(searchQuery.value, ignoreCase = true) == true ||
-                it.firmanavn?.contains(searchQuery.value, ignoreCase = true) == true
+    val filteredRows = rows.filter { row ->
+        val query = searchQuery.value.trim().lowercase()
+        if (query.isEmpty()) return@filter true
+
+        listOfNotNull(
+            row.henstillingId,
+            row.forseelse,
+            row.cvr?.toString(),
+            row.firmanavn,
+            row.adresse
+        ).any { fieldValue ->
+            fieldValue.lowercase().contains(query)
+        }
     }
+
 
     val pullRefreshState = rememberPullToRefreshState()
     val onRefresh = {
@@ -222,22 +234,47 @@ fun VejmanMainScreen(viewModel: VejmanViewModel, onNavigateToRegelrytteren: () -
                                 ) {
                                     ListItem(
                                         headlineContent = {
-                                            Text(row.adresse ?: "Ukendt adresse", style = MaterialTheme.typography.titleMedium)
-                                        },
-                                        supportingContent = {
-                                            Column {
-                                                Text("Firma: ${row.firmanavn ?: "-"}")
-                                                Text("Dato: ${formatDate(row.startdato)} – ${formatDate(row.slutdato)}")
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = row.adresse ?: "Ukendt adresse",
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier
+                                                        .weight(1f) // 👈 gives it flexible space but keeps date visible
+                                                        .padding(end = 8.dp)
+                                                )
+                                                Text(
+                                                    text = formatDate(row.startdato),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Clip // 👈 no ellipsis needed for date
+                                                )
                                             }
                                         },
-                                        trailingContent = {
-                                            Text(
-                                                "${row.distanceFromCurrent?.toInt() ?: ""}",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
+                                        supportingContent = {
+                                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                Text(
+                                                    row.forseelse ?: "-",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    row.firmanavn ?: "-",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
                                     )
+
                                 }
                             }
                         }
@@ -249,11 +286,13 @@ fun VejmanMainScreen(viewModel: VejmanViewModel, onNavigateToRegelrytteren: () -
 }
 
 fun formatDate(raw: String?): String {
+    if (raw.isNullOrBlank()) return "-"
     return try {
-        val parser = SimpleDateFormat("EEE, dd MMM yyyy", Locale.ENGLISH)
+        val parser = SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH)
         val output = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
-        raw?.let { output.format(parser.parse(it)!!) } ?: "-"
-    } catch (e: Exception) {
+        output.format(parser.parse(raw)!!)
+    } catch (_: Exception) {
         "-"
     }
 }
+

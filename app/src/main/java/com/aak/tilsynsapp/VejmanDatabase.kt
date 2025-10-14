@@ -5,7 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [VejmanKassenRow::class], version = 2, exportSchema = false)
+@Database(entities = [VejmanKassenRow::class], version = 3, exportSchema = false)
 abstract class VejmanDatabase : RoomDatabase() {
     abstract fun vejmanDao(): VejmanDao
 

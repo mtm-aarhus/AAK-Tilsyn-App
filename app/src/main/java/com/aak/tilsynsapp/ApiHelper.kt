@@ -27,7 +27,7 @@ object ApiHelper {
             val requestBody = jsonBody.toRequestBody("application/json".toMediaType())
 
             val request = Request.Builder()
-                .url("${BuildConfig.API_URL}vejmankassen")
+                .url("${BuildConfig.API_URL}tilsynapp")
                 .post(requestBody)
                 .addHeader("X-API-Key", apiKey)
                 .addHeader("Content-Type", "application/json")
@@ -94,15 +94,31 @@ object ApiHelper {
         }
     }
 
-    suspend fun updateRow(context: Context, id: Int, updates: Map<String, Any?>): Boolean = withContext(Dispatchers.IO) {
+    suspend fun updateRow(
+        context: Context,
+        id: String,
+        updates: Map<String, Any?>,
+        oldStatus: String?,
+        newStatus: String?
+    ): Boolean = withContext(Dispatchers.IO) {
         try {
             val apiKey = SecurePrefs.getApiKey(context) ?: return@withContext false
 
-            val bodyData = updates.toMutableMap().apply { put("id", id) }
+            val bodyData = mutableMapOf<String, Any?>().apply {
+                put("id", id)
+                put("oldStatus", oldStatus ?: "Ny") // default fallback if null
+                putAll(updates)
+
+                newStatus?.let { put("fakturaStatus", it) }
+            }
+
+            // Optional debug log
+            Log.d("ApiHelper", "Sending update payload: ${gson.toJson(bodyData)}")
+
             val requestBody = gson.toJson(bodyData).toRequestBody("application/json".toMediaType())
 
             val request = Request.Builder()
-                .url("${BuildConfig.API_URL}vejmankassen/update")
+                .url("${BuildConfig.API_URL}tilsynapp/update")
                 .post(requestBody)
                 .addHeader("X-API-Key", apiKey)
                 .addHeader("Content-Type", "application/json")
@@ -125,6 +141,8 @@ object ApiHelper {
             return@withContext false
         }
     }
+
+
 
     suspend fun sendLoginRequest(email: String): String? = withContext(Dispatchers.IO) {
         try {

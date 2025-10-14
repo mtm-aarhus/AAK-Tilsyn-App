@@ -1,15 +1,14 @@
 package com.aak.tilsynsapp
 
 import androidx.room.Entity
-import androidx.room.Ignore
 import androidx.room.PrimaryKey
 import com.google.gson.annotations.SerializedName
 
 @Entity(tableName = "VejmanKassen")
 data class VejmanKassenRow(
     @PrimaryKey
-    @SerializedName("Id") val id: Int,
-    @SerializedName("HenstillingId") val henstillingId: String,
+    @SerializedName("id") val id: String,
+    @SerializedName("HenstillingId") val henstillingId: String?,
     @SerializedName("CVR") val cvr: Int?,
     @SerializedName("Tilladelsestype") val tilladelsestype: String?,
     @SerializedName("Kvadratmeter") val kvadratmeter: Float?,
@@ -21,7 +20,4 @@ data class VejmanKassenRow(
     @SerializedName("Longitude") val longitude: Double?,
     @SerializedName("Latitude") val latitude: Double?,
     @SerializedName("FakturaStatus") val fakturaStatus: String?
-) {
-    @Ignore
-    var distanceFromCurrent: Float? = null
-}
+)
