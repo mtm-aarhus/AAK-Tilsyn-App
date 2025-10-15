@@ -40,7 +40,7 @@ fun EditNyFakturaScreen(
     }
 
     var kvadratmeter by remember { mutableStateOf(row.kvadratmeter?.toString() ?: "") }
-    var tilladelsestype by remember { mutableStateOf(row.tilladelsestype ?: tilladelsestyper.first()) }
+    var tilladelsestype by remember { mutableStateOf(row.tilladelsestype ?: "") }
 
     var slutdatoText by remember {
         mutableStateOf(row.slutdato?.let {
@@ -246,7 +246,7 @@ fun EditNyFakturaScreen(
                         value = tilladelsestype,
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("Tilladelsestype") },
+                        label = { Text("Vælg tilladelsestype") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                         modifier = Modifier
                             .fillMaxWidth()
