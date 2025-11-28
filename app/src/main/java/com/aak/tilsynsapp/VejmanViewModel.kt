@@ -41,19 +41,44 @@ class VejmanViewModel(application: Application) : AndroidViewModel(application) 
 
     private var lastRefreshTime: Long = 0L
 
-    init {
-        val context = getApplication<Application>()
-        val savedKey = SecurePrefs.getApiKey(context)
+    private val _versionMessage = MutableStateFlow<String?>(null)
+    val versionMessage: StateFlow<String?> = _versionMessage
 
-        if (!savedKey.isNullOrBlank() && !SecurePrefs.isLoginExpired(context)) {
-            _loginState.value = LoginState.LoggedIn
-            Log.d("LoginFlow", "Restored valid API key and set LoggedIn state")
-        } else {
-            Log.d("LoginFlow", "API key expired or missing, clearing data")
-            SecurePrefs.clearAll(context)
-            _loginState.value = LoginState.Input
+    init {
+        viewModelScope.launch {
+            val context = getApplication<Application>()
+
+            // -------- VERSION CHECK --------
+            val versionInfo = ApiHelper.fetchVersionInfo()
+            val minVersion = (versionInfo?.get("min_version") as? Double)?.toInt() ?: 1
+            val message = versionInfo?.get("message") as? String
+
+            if (BuildConfig.VERSION_CODE < minVersion) {
+                Log.e("Version", "App version too old: $message")
+
+                // Save the update message for LoginScreen
+                _versionMessage.value = message ?: "Din app skal opdateres, gå ind i Play store og søg efter nyeste opdateringer."
+
+                // Force logout
+                SecurePrefs.clearAll(context)
+                _loginState.value = LoginState.Input
+
+                return@launch  // IMPORTANT
+            }
+
+
+            // -------- NORMAL LOGIN RESTORE --------
+            val savedKey = SecurePrefs.getApiKey(context)
+
+            if (!savedKey.isNullOrBlank() && !SecurePrefs.isLoginExpired(context)) {
+                _loginState.value = LoginState.LoggedIn
+            } else {
+                SecurePrefs.clearAll(context)
+                _loginState.value = LoginState.Input
+            }
         }
     }
+
 
 
     fun preloadAndMaybeRefresh(force: Boolean = false) {
@@ -128,11 +153,29 @@ class VejmanViewModel(application: Application) : AndroidViewModel(application) 
 
     fun pollAuthToken(token: String, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
-            val apiKey = ApiHelper.pollAuth(token)
-            if (apiKey != null) {
-                Log.d("LoginFlow", "API key received, login complete")
-                saveApiKey(apiKey)
+            val result = ApiHelper.pollAuth(token)
+
+            if (result != null) {
+                val (apiKey, email) = result
+
+                Log.d("LoginFlow", "API key + email received, completing login")
+
+                val context = getApplication<Application>()
+
+                // Save API key
+                SecurePrefs.saveApiKey(context, apiKey)
+
+                // Save email if server returned it
+                if (!email.isNullOrBlank()) {
+                    SecurePrefs.saveEmail(context, email)
+                }
+
+                // Update login timestamp (for 90-day expiration)
+                SecurePrefs.saveLoginTimestamp(context)
+
+                // Update UI state
                 _loginState.value = LoginState.LoggedIn
+
                 onResult(true)
             } else {
                 Log.d("LoginFlow", "Token not yet authorized")
@@ -141,6 +184,7 @@ class VejmanViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+
     private fun saveToken(token: String) {
         SecurePrefs.saveToken(getApplication(), token)
     }
@@ -148,13 +192,6 @@ class VejmanViewModel(application: Application) : AndroidViewModel(application) 
     fun loadSavedToken(): String? {
         return SecurePrefs.getToken(getApplication())
     }
-
-    private fun saveApiKey(apiKey: String) {
-        val context = getApplication<Application>()
-        SecurePrefs.saveApiKey(context, apiKey)
-        SecurePrefs.saveLoginTimestamp(context)
-    }
-
 
     fun resetLogin() {
         SecurePrefs.clearAll(getApplication())
@@ -189,6 +226,7 @@ class VejmanViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         newStatus?.let { updates["fakturaStatus"] = it }
+
 
         if (updates.isEmpty()) {
             Log.w("UpdateRow", "No changed fields to update for ID=${updatedRow.id}")

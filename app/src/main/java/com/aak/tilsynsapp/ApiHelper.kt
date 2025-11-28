@@ -106,7 +106,12 @@ object ApiHelper {
 
             val bodyData = mutableMapOf<String, Any?>().apply {
                 put("id", id)
-                put("oldStatus", oldStatus ?: "Ny") // default fallback if null
+                put("oldStatus", oldStatus ?: "Ny")
+
+                // The email should NOT go into updates (which become document fields)
+                SecurePrefs.getEmail(context)?.let { put("userEmail", it) }
+
+                // Apply changed fields
                 putAll(updates)
 
                 newStatus?.let { put("fakturaStatus", it) }
@@ -173,7 +178,7 @@ object ApiHelper {
         }
     }
 
-    suspend fun pollAuth(token: String): String? = withContext(Dispatchers.IO) {
+    suspend fun pollAuth(token: String): Pair<String, String?>? = withContext(Dispatchers.IO) {
         try {
             val json = gson.toJson(mapOf("token" to token))
             val requestBody = json.toRequestBody("application/json".toMediaType())
@@ -196,10 +201,11 @@ object ApiHelper {
 
                 val authorized = map["authorized"] == true
                 val keyFromServer = map["api_key"] as? String
+                val emailFromServer = map["email"] as? String
 
                 if (authorized && !keyFromServer.isNullOrBlank()) {
                     Log.d("ApiHelper", "Received API key from server")
-                    return@withContext keyFromServer
+                    return@withContext Pair(keyFromServer, emailFromServer)
                 }
 
                 Log.d("ApiHelper", "Token not authorized or key missing")
@@ -211,4 +217,27 @@ object ApiHelper {
             return@withContext null
         }
     }
+
+    suspend fun fetchVersionInfo(): Map<String, Any>? = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url("${BuildConfig.API_URL}tilsynapp/version")
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+
+                val json = response.body?.string() ?: return@withContext null
+
+                val type = object : TypeToken<Map<String, Any>>() {}.type
+                return@withContext gson.fromJson(json, type)
+            }
+        } catch (e: Exception) {
+            Log.e("ApiHelper", "Version check failed", e)
+            return@withContext null
+        }
+    }
+
+
 }

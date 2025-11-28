@@ -23,7 +23,7 @@ object SecurePrefs {
 
     private const val KEY_API = "api_key"
     private const val KEY_TOKEN = "login_token"
-    //private const val KEY_EMAIL = "user_email"
+    private const val KEY_EMAIL = "user_email"
     private const val KEY_LOGIN_TIME = "login_time"
 
     private fun prefs(context: Context): SharedPreferences {
@@ -78,7 +78,7 @@ object SecurePrefs {
 
             val plaintext = cipher.doFinal(ciphertext)
             String(plaintext, Charset.defaultCharset())
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
     }
@@ -98,8 +98,8 @@ object SecurePrefs {
     fun saveToken(context: Context, token: String) = saveEncrypted(context, KEY_TOKEN, token)
     fun getToken(context: Context): String? = loadDecrypted(context, KEY_TOKEN)
 
-    // fun saveEmail(context: Context, email: String) = saveEncrypted(context, KEY_EMAIL, email)
-    // fun getEmail(context: Context): String? = loadDecrypted(context, KEY_EMAIL)
+    fun saveEmail(context: Context, email: String) = saveEncrypted(context, KEY_EMAIL, email)
+    fun getEmail(context: Context): String? = loadDecrypted(context, KEY_EMAIL)
 
     fun saveLoginTimestamp(context: Context) {
         prefs(context).edit { putLong(KEY_LOGIN_TIME, System.currentTimeMillis()) }

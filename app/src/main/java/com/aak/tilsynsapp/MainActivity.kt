@@ -20,6 +20,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val api = SecurePrefs.getApiKey(this)
+        val email = SecurePrefs.getEmail(this)
+
+        if (!api.isNullOrBlank() && email.isNullOrBlank()) {
+            // Old session from previous app version → wipe it
+            SecurePrefs.clearAll(this)
+        }
+
         val isDarkTheme = (resources.configuration.uiMode and
                 android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
 

@@ -14,11 +14,29 @@ import kotlinx.coroutines.delay
 @Composable
 fun LoginScreen(viewModel: VejmanViewModel) {
     val loginState by viewModel.loginState.collectAsState()
+    val versionMessage by viewModel.versionMessage.collectAsState(initial = null)
     val context = LocalContext.current
+    val activity = context as? android.app.Activity
+
 
     var email by remember { mutableStateOf(TextFieldValue("")) }
     val isSending = remember { mutableStateOf(false) }
 
+    if (versionMessage != null) {
+        AlertDialog(
+            onDismissRequest = {},
+            confirmButton = {
+                TextButton(onClick = {
+                    // Close the app completely
+                    activity?.finishAffinity()
+                }) {
+                    Text("Luk app")
+                }
+            },
+            title = { Text("Opdatering påkrævet") },
+            text = { Text(versionMessage!!) }
+        )
+    }
     // Reset UI state if login state goes back to Input
     LaunchedEffect(loginState) {
         if (loginState is LoginState.Input) {

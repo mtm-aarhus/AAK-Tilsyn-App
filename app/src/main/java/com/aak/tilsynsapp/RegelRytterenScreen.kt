@@ -132,6 +132,7 @@ fun RegelRytterenScreen(
             if (isSubmitting) {
                 CircularProgressIndicator()
             } else {
+                @Suppress("KotlinConstantConditions")
                 Button(
                     onClick = {
                         coroutineScope.launch {

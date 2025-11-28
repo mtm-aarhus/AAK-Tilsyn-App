@@ -1,3 +1,8 @@
+@file:Suppress("AssignedValueIsNeverRead", "AssignedValueIsNeverRead", "AssignedValueIsNeverRead",
+    "AssignedValueIsNeverRead", "AssignedValueIsNeverRead", "AssignedValueIsNeverRead",
+    "AssignedValueIsNeverRead"
+)
+
 package com.aak.tilsynsapp
 
 import android.app.DatePickerDialog
@@ -48,7 +53,16 @@ fun EditNyFakturaScreen(
         } ?: "")
     }
     var isDateValid by remember { mutableStateOf(true) }
+    var isKvadratmeterValid by remember { mutableStateOf(true) }
+
+    val canSubmit = isKvadratmeterValid &&
+            kvadratmeter.isNotBlank() &&
+            isDateValid &&
+            slutdatoText.isNotBlank() &&
+            tilladelsestype.isNotBlank()
+
     var showUnsavedDialog by remember { mutableStateOf(false) }
+
     var hasUnsavedChanges by remember { mutableStateOf(false) }
 
     fun markUnsaved() { hasUnsavedChanges = true }
@@ -210,7 +224,6 @@ fun EditNyFakturaScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            var isKvadratmeterValid by remember { mutableStateOf(true) }
 
             OutlinedTextField(
                 value = kvadratmeter,
@@ -243,7 +256,7 @@ fun EditNyFakturaScreen(
                     onExpandedChange = { expanded = !expanded }
                 ) {
                     OutlinedTextField(
-                        value = tilladelsestype,
+                        value = prettyType(tilladelsestype),
                         onValueChange = {},
                         readOnly = true,
                         label = { Text("Vælg tilladelsestype") },
@@ -259,7 +272,7 @@ fun EditNyFakturaScreen(
                     ) {
                         tilladelsestyper.forEach { type ->
                             DropdownMenuItem(
-                                text = { Text(type) },
+                                text = {  Text(prettyType(type))  },
                                 onClick = {
                                     tilladelsestype = type
                                     markUnsaved()
@@ -271,7 +284,7 @@ fun EditNyFakturaScreen(
                 }
             } else {
                 OutlinedTextField(
-                    value = tilladelsestype,
+                    value = prettyType(tilladelsestype),
                     onValueChange = {},
                     label = { Text("Tilladelsestype") },
                     readOnly = true,
@@ -319,6 +332,7 @@ fun EditNyFakturaScreen(
                                     )
                                     onSubmit(updated, "Til fakturering")
                                 },
+                                enabled = canSubmit,
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text("Send til fakturering")
@@ -362,7 +376,28 @@ fun EditNyFakturaScreen(
 }
 
 val tilladelsestyper = listOf(
-    "Henstilling Stillads m2", "Henstilling Byggeplads m2", "Henstilling Bygninger m2",
-    "Henstilling Container m2", "Henstilling Kran m2", "Henstilling Lift m2",
-    "Henstilling Materiel m2", "Henstilling Skurvogn m2", "Henstilling Afmærkning m2"
+    "751_Stillads pr. kvadratmeter",
+    "751_Afmærkning pr.kvadratmeter",
+    "751_Byggeplads pr.kvadratmeter",
+    "751_Materiel pr. kvadratmeter",
+    "751_Bygninger pr. kvadratmeter",
+    "751_Lift pr. kvadratmeter",
+    "751_Kran pr. kvadratmeter",
+    "751_Skurvogn pr. kvadratmeter",
+    "751_Container pr. kvadratmeter"
 )
+
+fun prettyType(type: String): String {
+    return when (type) {
+        "751_Stillads pr. kvadratmeter"   -> "Stillads (m²)"
+        "751_Afmærkning pr.kvadratmeter" -> "Afmærkning (m²)"
+        "751_Byggeplads pr.kvadratmeter" -> "Byggeplads (m²)"
+        "751_Materiel pr. kvadratmeter"  -> "Materiel (m²)"
+        "751_Bygninger pr. kvadratmeter" -> "Bygninger (m²)"
+        "751_Lift pr. kvadratmeter"      -> "Lift (m²)"
+        "751_Kran pr. kvadratmeter"      -> "Kran (m²)"
+        "751_Skurvogn pr. kvadratmeter"  -> "Skurvogn (m²)"
+        "751_Container pr. kvadratmeter" -> "Container (m²)"
+        else -> type
+    }
+}
