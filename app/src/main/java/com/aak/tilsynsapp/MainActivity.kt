@@ -65,18 +65,25 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppRoot(viewModel: VejmanViewModel) {
     val loginState by viewModel.loginState.collectAsState()
-    var currentScreen by remember { mutableStateOf("Fakturering") }
+    var currentScreen by remember { mutableStateOf("Tilsyn") }
 
     TilsynsAppTheme {
         when (loginState) {
             is LoginState.LoggedIn -> {
                 when (currentScreen) {
-                    "Fakturering" -> VejmanMainScreen(
+                    "Tilsyn" -> TilsynScreen(
                         viewModel = viewModel,
-                        onNavigateToRegelrytteren = { currentScreen = "RegelRytteren" }
+                        onNavigateToRegelrytteren = { currentScreen = "RegelRytteren" },
+                        onNavigateToHistory = { currentScreen = "History" }
                     )
                     "RegelRytteren" -> RegelRytterenScreen(
-                        onBack = { currentScreen = "Fakturering" }
+                        onNavigateToTilsyn = { currentScreen = "Tilsyn" },
+                        onNavigateToHistory = { currentScreen = "History" }
+                    )
+                    "History" -> HistoryScreen(
+                        viewModel = viewModel,
+                        onNavigateToTilsyn = { currentScreen = "Tilsyn" },
+                        onNavigateToRegelrytteren = { currentScreen = "RegelRytteren" }
                     )
                 }
             }

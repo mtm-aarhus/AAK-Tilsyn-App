@@ -3,6 +3,7 @@ package com.aak.tilsynsapp
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material3.*
@@ -14,38 +15,32 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import java.util.Locale
 import kotlin.math.roundToInt
 
 @Composable
 fun RegelRytterenScreen(
     modifier: Modifier = Modifier,
     viewModel: RegelRytterenViewModel = viewModel(),
-    onBack: () -> Unit
-
+    onNavigateToTilsyn: () -> Unit,
+    onNavigateToHistory: () -> Unit
 ) {
     val context = LocalContext.current
     val bikes by viewModel.bikes.collectAsState()
     val cars by viewModel.cars.collectAsState()
     val vejman by viewModel.vejman.collectAsState()
     val henstillinger by viewModel.henstillinger.collectAsState()
-    val coroutineScope = rememberCoroutineScope()
+    val isSubmitting by viewModel.isSubmitting.collectAsState()
+    val successLockout by viewModel.successLockout.collectAsState()
+    val countdown by viewModel.countdown.collectAsState()
+    val statusMessage by viewModel.statusMessage.collectAsState()
+
     val snackbarHostState = remember { SnackbarHostState() }
 
-    var isSubmitting by remember { mutableStateOf(false) }
-    var successLockout by remember { mutableStateOf(false) }
-    var countdown by remember { mutableIntStateOf(300) }
-
-    // Timer countdown effect
-    LaunchedEffect(successLockout) {
-        if (successLockout) {
-            countdown = 300
-            while (countdown > 0) {
-                delay(1000)
-                countdown--
-            }
-            successLockout = false
+    LaunchedEffect(statusMessage) {
+        statusMessage?.let {
+            snackbarHostState.showSnackbar(it, duration = SnackbarDuration.Short)
+            viewModel.clearStatusMessage()
         }
     }
 
@@ -64,15 +59,21 @@ fun RegelRytterenScreen(
             NavigationBar {
                 NavigationBarItem(
                     selected = false,
-                    onClick = onBack,
-                    icon = { Icon(Icons.Default.Receipt, contentDescription = "Fakturering") },
-                    label = { Text("Fakturering") }
+                    onClick = onNavigateToTilsyn,
+                    icon = { Icon(Icons.Default.Receipt, contentDescription = "Tilsyn") },
+                    label = { Text("Tilsyn") }
                 )
                 NavigationBarItem(
                     selected = true,
                     onClick = {},
                     icon = { Icon(Icons.Default.Route, contentDescription = "RegelRytteren") },
                     label = { Text("RegelRytteren") }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = onNavigateToHistory,
+                    icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Historik") },
+                    label = { Text("Historik") }
                 )
             }
         }
@@ -132,41 +133,19 @@ fun RegelRytterenScreen(
             if (isSubmitting) {
                 CircularProgressIndicator()
             } else {
-                @Suppress("KotlinConstantConditions")
                 Button(
-                    onClick = {
-                        coroutineScope.launch {
-                            if ((bikes + cars) == 0) {
-                                snackbarHostState.showSnackbar("Du skal vælge mindst én cykel eller bil", duration = SnackbarDuration.Short)
-                                return@launch
-                            }
-                            if (!vejman && !henstillinger) {
-                                snackbarHostState.showSnackbar("Vælg mindst én type: Tilladelser eller Henstillinger", duration = SnackbarDuration.Short)
-                                return@launch
-                            }
-                            isSubmitting = true
-                            val success = ApiHelper.sendRegelrytterenPayload(
-                                context = context,
-                                bikes = bikes,
-                                cars = cars,
-                                vejman = vejman,
-                                henstillinger = henstillinger
-                            )
-                            viewModel.updateStatusMessage(success)
-                            isSubmitting = false
-                            successLockout = true
-                            snackbarHostState.showSnackbar(success, duration = SnackbarDuration.Long)
-
-                        }
-                    },
-                    enabled = !isSubmitting && !successLockout
+                    onClick = { viewModel.submit(context) },
+                    enabled = !successLockout
                 ) {
                     Text("Generer nye ruter")
                 }
             }
 
             if (successLockout) {
-                Text("Du kan sende igen om $countdown sek.", style = MaterialTheme.typography.bodySmall)
+                val minutes = countdown / 60
+                val seconds = countdown % 60
+                val timeStr = String.format(Locale.getDefault(), "%d:%02d", minutes, seconds)
+                Text("Du kan sende igen om $timeStr", style = MaterialTheme.typography.bodySmall)
             }
         }
     }
