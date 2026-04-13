@@ -93,11 +93,17 @@ object ApiHelper {
                 "inspector_email" to email,
                 "comment" to comment,
                 "selection" to selection,
-                "inspected_at" to SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.ENGLISH).format(Date())
+                "inspected_at" to SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.ENGLISH).format(Date())
             )
             
             if (oldStatus != null) payload["oldStatus"] = oldStatus
-            if (updates != null) payload["updates"] = updates
+            
+            // Extract specific fields for history tracking if they exist in updates
+            if (updates != null) {
+                payload["updates"] = updates
+                if (updates.containsKey("kvadratmeter")) payload["kvadratmeter"] = updates["kvadratmeter"]
+                if (updates.containsKey("fakturaStatus")) payload["faktura_status"] = updates["fakturaStatus"]
+            }
 
             val jsonPayload = gson.toJson(payload)
             Log.d("ApiHelper", "unifiedInspect Payload: $jsonPayload")

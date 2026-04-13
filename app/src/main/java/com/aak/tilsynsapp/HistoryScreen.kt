@@ -1,7 +1,6 @@
 package com.aak.tilsynsapp
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,7 +28,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
-    viewModel: VejmanViewModel,
+    viewModel: TilsynViewModel,
     onNavigateToTilsyn: () -> Unit,
     onNavigateToRegelrytteren: () -> Unit
 ) {
@@ -136,11 +135,14 @@ fun HistoryScreen(
     }
 }
 
+@Suppress("AssignedValueIsNeverRead")
 @Composable
-fun HistoryCard(item: TilsynItem, viewModel: VejmanViewModel) {
+fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel) {
     var expanded by remember { mutableStateOf(false) }
     var showInspectDialog by remember { mutableStateOf(false) }
+    @Suppress("UNUSED_VARIABLE")
     val context = LocalContext.current
+    @Suppress("UNUSED_VARIABLE")
     val coroutineScope = rememberCoroutineScope()
 
     if (showInspectDialog) {
@@ -189,7 +191,20 @@ fun HistoryCard(item: TilsynItem, viewModel: VejmanViewModel) {
                     
                     if (item.type == "henstilling") {
                         val status = item.fakturaStatus
-                        if (status == "Fakturer ikke" || status == "Til fakturering") {
+                        if (status == "Til fakturering") {
+                            TextButton(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        viewModel.updateRow(context, item, "Ny", "Fortrød fakturering")
+                                    }
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.Undo, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Fortryd fakturering", fontSize = 12.sp)
+                            }
+                        } else if (status == "Fakturer ikke") {
                             IconButton(onClick = {
                                 coroutineScope.launch {
                                     viewModel.updateRow(context, item, "Ny")
@@ -197,7 +212,7 @@ fun HistoryCard(item: TilsynItem, viewModel: VejmanViewModel) {
                             }, modifier = Modifier.size(32.dp)) {
                                 Icon(
                                     Icons.AutoMirrored.Filled.Undo, 
-                                    contentDescription = if (status == "Fakturer ikke") "Gendan (Vis)" else "Fortryd fakturering", 
+                                    contentDescription = "Gendan (Vis)",
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(24.dp)
                                 )
@@ -208,82 +223,7 @@ fun HistoryCard(item: TilsynItem, viewModel: VejmanViewModel) {
             }
 
             AnimatedVisibility(visible = expanded) {
-                Column(modifier = Modifier.padding(top = 12.dp)) {
-                    HorizontalDivider(thickness = 0.5.dp)
-                    if (item.type == "permission") {
-                        TilsynDetailRow("Vejman Status", item.vejmanState)
-                        TilsynDetailRow("Sag ID", item.caseId)
-                        TilsynDetailRow("Sagsnummer", item.caseNumber)
-                        TilsynDetailRow("Ansøger", item.applicant)
-                        TilsynDetailRow("Marker", item.marker)
-                        TilsynDetailRow("Udstyr", item.rovmEquipmentType)
-                        TilsynDetailRow("Sagsmappenr", item.applicantFolderNumber)
-                        TilsynDetailRow("Ref", item.authorityReferenceNumber)
-                        TilsynDetailRow("Vejstatus", item.streetStatus)
-                        TilsynDetailRow("Relateret", item.connectedCase)
-                        TilsynDetailRow("Initialer", item.initials)
-                        TilsynDetailRow("Start", tilsynFormatDate(item.startDate))
-                        TilsynDetailRow("Slut", tilsynFormatDate(item.endDate))
-                    } else {
-                        TilsynDetailRow("Backend Status", item.fakturaStatus)
-                        TilsynDetailRow("Sag ID", item.id)
-                        TilsynDetailRow("Henstilling ID", item.henstillingId)
-                        TilsynDetailRow("Firma", item.firmanavn)
-                        TilsynDetailRow("CVR", item.cvr?.toString())
-                        TilsynDetailRow("Forseelse", item.forseelse)
-                        TilsynDetailRow("Tilladelsestype", item.tilladelsestype)
-                        TilsynDetailRow("M2", item.kvadratmeter?.toString())
-                        TilsynDetailRow("Start", item.startdatoHenstilling)
-                        TilsynDetailRow("Slut", item.slutdatoHenstilling)
-                    }
-
-                    // Unified History Section
-                    if (!item.inspections.isNullOrEmpty()) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text("Tilsynshistorik:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        item.inspections.reversed().forEach { record ->
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp)
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), MaterialTheme.shapes.small)
-                                    .padding(8.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        text = record.inspectorEmail.substringBefore("@").uppercase(),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = tilsynFormatDateShort(record.inspectedAt),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                if (!record.selection.isNullOrBlank()) {
-                                    Text(
-                                        text = "Status: ${record.selection}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                                if (!record.comment.isNullOrBlank()) {
-                                    Text(
-                                        text = record.comment,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontSize = 11.sp
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+                TilsynExpandedDetails(item)
             }
         }
     }

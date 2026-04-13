@@ -11,14 +11,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 
-sealed class LoginState {
-    object Loading : LoginState()
-    object Input : LoginState()
-    data class Waiting(val email: String) : LoginState()
-    object LoggedIn : LoginState()
+sealed class TilsynLoginState {
+    object Loading : TilsynLoginState()
+    object Input : TilsynLoginState()
+    data class Waiting(val email: String) : TilsynLoginState()
+    object LoggedIn : TilsynLoginState()
 }
 
-class VejmanViewModel(application: Application) : AndroidViewModel(application) {
+class TilsynViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _tilsynItems = MutableStateFlow<List<TilsynItem>>(emptyList())
     val tilsynItems: StateFlow<List<TilsynItem>> = _tilsynItems
@@ -29,8 +29,8 @@ class VejmanViewModel(application: Application) : AndroidViewModel(application) 
     private val _loadingStatus = MutableStateFlow<String?>(null)
     val loadingStatus: StateFlow<String?> = _loadingStatus
 
-    private val _loginState = MutableStateFlow<LoginState>(LoginState.Loading)
-    val loginState: StateFlow<LoginState> = _loginState
+    private val _loginState = MutableStateFlow<TilsynLoginState>(TilsynLoginState.Loading)
+    val loginState: StateFlow<TilsynLoginState> = _loginState
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing
@@ -53,17 +53,17 @@ class VejmanViewModel(application: Application) : AndroidViewModel(application) 
                 Log.e("Version", "App version too old: $message")
                 _versionMessage.value = message ?: "Din app skal opdateres, gå ind i Play store og søg efter nyeste opdateringer."
                 SecurePrefs.clearAll(context)
-                _loginState.value = LoginState.Input
+                _loginState.value = TilsynLoginState.Input
                 return@launch
             }
 
             // -------- NORMAL LOGIN RESTORE --------
             val savedKey = SecurePrefs.getApiKey(context)
             if (!savedKey.isNullOrBlank() && !SecurePrefs.isLoginExpired(context)) {
-                _loginState.value = LoginState.LoggedIn
+                _loginState.value = TilsynLoginState.LoggedIn
             } else {
                 SecurePrefs.clearAll(context)
-                _loginState.value = LoginState.Input
+                _loginState.value = TilsynLoginState.Input
             }
         }
     }
@@ -164,7 +164,7 @@ class VejmanViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun sendLoginEmail(email: String) {
-        _loginState.value = LoginState.Waiting(email)
+        _loginState.value = TilsynLoginState.Waiting(email)
         viewModelScope.launch(Dispatchers.IO) {
             val token = ApiHelper.sendLoginRequest(email)
             if (token != null) {
@@ -182,7 +182,7 @@ class VejmanViewModel(application: Application) : AndroidViewModel(application) 
                 SecurePrefs.saveApiKey(context, apiKey)
                 if (!email.isNullOrBlank()) SecurePrefs.saveEmail(context, email)
                 SecurePrefs.saveLoginTimestamp(context)
-                _loginState.value = LoginState.LoggedIn
+                _loginState.value = TilsynLoginState.LoggedIn
                 onResult(true)
             } else {
                 onResult(false)
@@ -194,6 +194,6 @@ class VejmanViewModel(application: Application) : AndroidViewModel(application) 
 
     fun resetLogin() {
         SecurePrefs.clearAll(getApplication())
-        _loginState.value = LoginState.Input
+        _loginState.value = TilsynLoginState.Input
     }
 }

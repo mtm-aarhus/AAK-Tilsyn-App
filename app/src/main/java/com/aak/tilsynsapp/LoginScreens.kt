@@ -12,7 +12,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
 @Composable
-fun LoginScreen(viewModel: VejmanViewModel) {
+fun LoginScreen(viewModel: TilsynViewModel) {
     val loginState by viewModel.loginState.collectAsState()
     val versionMessage by viewModel.versionMessage.collectAsState(initial = null)
     val context = LocalContext.current
@@ -37,14 +37,14 @@ fun LoginScreen(viewModel: VejmanViewModel) {
     }
 
     LaunchedEffect(loginState) {
-        if (loginState is LoginState.Input) {
+        if (loginState is TilsynLoginState.Input) {
             isSending.value = false
             email = TextFieldValue("")
         }
     }
 
     when (val state = loginState) {
-        is LoginState.Loading -> {
+        is TilsynLoginState.Loading -> {
             Surface(
                 modifier = Modifier.fillMaxSize(),
                 color = MaterialTheme.colorScheme.background
@@ -55,7 +55,7 @@ fun LoginScreen(viewModel: VejmanViewModel) {
             }
         }
 
-        is LoginState.Input -> {
+        is TilsynLoginState.Input -> {
             Surface(
                 modifier = Modifier.fillMaxSize(),
                 color = MaterialTheme.colorScheme.background
@@ -105,7 +105,7 @@ fun LoginScreen(viewModel: VejmanViewModel) {
             }
         }
 
-        is LoginState.Waiting -> {
+        is TilsynLoginState.Waiting -> {
             val pollingMessage = remember { mutableStateOf("Venter på godkendelse...") }
 
             LaunchedEffect(Unit) {
@@ -151,7 +151,7 @@ fun LoginScreen(viewModel: VejmanViewModel) {
             }
         }
 
-        is LoginState.LoggedIn -> {
+        is TilsynLoginState.LoggedIn -> {
             // Nothing to show here. Main screen will take over.
         }
     }

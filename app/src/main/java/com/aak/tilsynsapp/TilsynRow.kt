@@ -4,8 +4,8 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.google.gson.annotations.SerializedName
 
-@Entity(tableName = "VejmanKassen")
-data class VejmanKassenRow(
+@Entity(tableName = "TilsynRows")
+data class TilsynRow(
     @PrimaryKey
     @SerializedName("id") val id: String,
     @SerializedName("HenstillingId") val henstillingId: String?,

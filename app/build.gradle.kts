@@ -16,8 +16,8 @@ android {
         applicationId = "com.aak.tilsynsapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 8
-        versionName = "1.8"
+        versionCode = 9
+        versionName = "1.9"
         buildConfigField("String", "API_URL", "\"https://pyorchestrator.aarhuskommune.dk/api/\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

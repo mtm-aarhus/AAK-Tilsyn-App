@@ -16,7 +16,7 @@ import java.util.logging.Level
 import java.util.logging.Logger
 
 class MainActivity : ComponentActivity() {
-    private val viewModel: VejmanViewModel by viewModels()
+    private val viewModel: TilsynViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,13 +63,13 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AppRoot(viewModel: VejmanViewModel) {
+fun AppRoot(viewModel: TilsynViewModel) {
     val loginState by viewModel.loginState.collectAsState()
     var currentScreen by remember { mutableStateOf("Tilsyn") }
 
     TilsynsAppTheme {
         when (loginState) {
-            is LoginState.LoggedIn -> {
+            is TilsynLoginState.LoggedIn -> {
                 when (currentScreen) {
                     "Tilsyn" -> TilsynScreen(
                         viewModel = viewModel,

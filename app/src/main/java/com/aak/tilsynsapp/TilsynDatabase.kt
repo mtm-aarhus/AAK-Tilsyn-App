@@ -5,20 +5,21 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [VejmanKassenRow::class], version = 3, exportSchema = false)
-abstract class VejmanDatabase : RoomDatabase() {
-    abstract fun vejmanDao(): VejmanDao
+@Database(entities = [TilsynRow::class], version = 4, exportSchema = false)
+abstract class TilsynDatabase : RoomDatabase() {
+    abstract fun tilsynDao(): TilsynDao
 
     companion object {
         @Volatile
-        private var INSTANCE: VejmanDatabase? = null
+        private var INSTANCE: TilsynDatabase? = null
 
-        fun getDatabase(context: Context): VejmanDatabase {
+        @Suppress("unused")
+        fun getDatabase(context: Context): TilsynDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
-                    VejmanDatabase::class.java,
-                    "vejman_database"
+                    TilsynDatabase::class.java,
+                    "tilsyn_database"
                 ).fallbackToDestructiveMigration(true).build()
                 INSTANCE = instance
                 instance

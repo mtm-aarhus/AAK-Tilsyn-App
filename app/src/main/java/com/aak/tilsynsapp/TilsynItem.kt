@@ -63,11 +63,14 @@ data class TilsynItem(
 
     val typeLabel: String
         get() = if (type == "permission") {
-            when (vejmanState) {
-                "Godkendt" -> "NY TILLADELSE"
-                "Endelig færdigmeldt" -> "FÆRDIG TILLADELSE"
-                "Udløbet" -> "UDLØBET TILLADELSE"
-                else -> "${vejmanState?.uppercase() ?: "AKTIV"} TILLADELSE"
+            val state = vejmanState ?: "Aktiv"
+            when {
+                state.contains("Ny", ignoreCase = true) -> "NY TILLADELSE"
+                state.contains("Færdig", ignoreCase = true) -> "FÆRDIG TILLADELSE"
+                state == "Godkendt" -> "NY TILLADELSE"
+                state == "Endelig færdigmeldt" -> "FÆRDIG TILLADELSE"
+                state == "Udløbet" -> "UDLØBET TILLADELSE"
+                else -> "${state.uppercase()} TILLADELSE"
             }
         } else {
             "HENSTILLING"
@@ -78,5 +81,8 @@ data class InspectionRecord(
     @SerializedName("inspected_at") val inspectedAt: String,
     @SerializedName("inspector_email") val inspectorEmail: String,
     @SerializedName("comment") val comment: String?,
-    @SerializedName("selection") val selection: String? = null
+    @SerializedName("selection") val selection: String? = null,
+    @SerializedName("kvadratmeter") val kvadratmeter: Float? = null,
+    @SerializedName("faktura_status") val fakturaStatus: String? = null,
+    @SerializedName("slutdato") val slutdato: String? = null
 )

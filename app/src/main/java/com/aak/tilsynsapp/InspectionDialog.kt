@@ -75,7 +75,7 @@ fun processImageForUpload(bitmap: Bitmap): ByteArray {
 @Composable
 fun InspectionDialog(
     item: TilsynItem,
-    viewModel: VejmanViewModel,
+    viewModel: TilsynViewModel,
     onDismiss: () -> Unit
 ) {
     var step by remember { mutableIntStateOf(1) }
@@ -146,11 +146,13 @@ fun InspectionDialog(
     }
 
     var m2Value by remember { mutableStateOf(item.kvadratmeter?.toString()?.replace(".", ",") ?: "") }
-    var isKvadratmeterValid by remember { mutableStateOf(true) }
-    var manualSlutDate by remember { mutableStateOf(item.displayEndDate ?: "") }
-    var showDatePicker by remember { mutableStateOf(false) }
+    var isKvadratmeterValid by remember { mutableStateOf(m2Value.isEmpty() || m2Value.replace(",", ".").toFloatOrNull() != null) }
+    var manualSlutDate by remember { 
+        mutableStateOf(item.displayEndDate.takeIf { !it.isNullOrBlank() } ?: SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())) 
+    }
+    val showDatePicker = remember { mutableStateOf(false) }
 
-    if (showDatePicker) {
+    if (showDatePicker.value) {
         val datePickerState = rememberDatePickerState(
             initialSelectedDateMillis = try {
                 SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH).parse(manualSlutDate)?.time
@@ -159,13 +161,13 @@ fun InspectionDialog(
             }
         )
         DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
+            onDismissRequest = { showDatePicker.value = false },
             confirmButton = {
                 TextButton(onClick = {
                     datePickerState.selectedDateMillis?.let {
                         manualSlutDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(it))
                     }
-                    showDatePicker = false
+                    showDatePicker.value = false
                 }) { Text("OK") }
             }
         ) { DatePicker(state = datePickerState) }
@@ -215,20 +217,20 @@ fun InspectionDialog(
                                 if (item.type == "henstilling") {
                                     TilsynDialogDetailRow("Adresse", item.adresse)
                                     TilsynDialogDetailRow("Sag ID", item.id)
-                                    TilsynDialogDetailRow("Henstilling ID", item.henstillingId)
                                     TilsynDialogDetailRow("Firma", item.firmanavn)
                                     TilsynDialogDetailRow("CVR", item.cvr?.toString())
                                     TilsynDialogDetailRow("Forseelse", item.forseelse)
                                     TilsynDialogDetailRow("Type", prettyType(item.tilladelsestype))
                                     TilsynDialogDetailRow("Areal", if (item.kvadratmeter != null) "${item.kvadratmeter} m²" else null)
-                                    TilsynDialogDetailRow("Start", item.startdatoHenstilling)
-                                    TilsynDialogDetailRow("Slut", item.slutdatoHenstilling)
+                                    TilsynDialogDetailRow("Start", tilsynFormatDate(item.startdatoHenstilling))
+                                    val slutLabel = if (item.fakturaStatus == "Ny") "Sidst set" else "Slut"
+                                    TilsynDialogDetailRow(slutLabel, tilsynFormatDate(item.slutdatoHenstilling))
                                 } else {
                                     TilsynDialogDetailRow("Vejnavn", item.displayStreet)
                                     TilsynDialogDetailRow("Sag ID", item.caseId)
                                     TilsynDialogDetailRow("Sagsnummer", item.caseNumber)
-                                    TilsynDetailRow("Ansøger", item.applicant)
-                                    TilsynDetailRow("Udstyr", item.rovmEquipmentType)
+                                    TilsynDialogDetailRow("Ansøger", item.applicant)
+                                    TilsynDialogDetailRow("Udstyr", item.rovmEquipmentType)
                                     TilsynDialogDetailRow("Start", tilsynFormatDate(item.startDate))
                                     TilsynDialogDetailRow("Slut", tilsynFormatDate(item.endDate))
                                 }
@@ -244,7 +246,7 @@ fun InspectionDialog(
                                     onValueChange = {
                                         val filtered = it.replace(".", ",").filter { ch -> ch.isDigit() || ch == ',' }
                                         m2Value = filtered
-                                        isKvadratmeterValid = filtered.replace(",", ".").toFloatOrNull() != null
+                                        isKvadratmeterValid = filtered.isEmpty() || filtered.replace(",", ".").toFloatOrNull() != null
                                     },
                                     isError = !isKvadratmeterValid,
                                     label = { Text("Kvadratmeter", fontSize = 18.sp) },
@@ -269,13 +271,13 @@ fun InspectionDialog(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     OutlinedTextField(
-                                        value = manualSlutDate,
-                                        onValueChange = { manualSlutDate = it },
+                                        value = tilsynFormatDate(manualSlutDate),
+                                        onValueChange = { /* manualSlutDate updated via picker */ },
                                         label = { Text("Slutdato", fontSize = 18.sp) },
                                         modifier = Modifier.weight(1f),
                                         readOnly = true
                                     )
-                                    IconButton(onClick = { showDatePicker = true }, modifier = Modifier.size(48.dp)) {
+                                    IconButton(onClick = { showDatePicker.value = true }, modifier = Modifier.size(48.dp)) {
                                         Icon(Icons.Default.CalendarToday, "Vælg dato", modifier = Modifier.size(32.dp))
                                     }
                                 }
@@ -453,6 +455,7 @@ fun InspectionDialog(
                                     
                                     Button(
                                         onClick = { step = 2 },
+                                        enabled = m2Value.isNotBlank() && isKvadratmeterValid,
                                         modifier = Modifier.weight(1f),
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50), contentColor = Color.White),
                                         contentPadding = PaddingValues(horizontal = 4.dp)
@@ -502,25 +505,10 @@ fun InspectionDialog(
                                             onDismiss()
                                         }
                                     },
+                                    enabled = m2Value.isNotBlank() && isKvadratmeterValid && manualSlutDate.isNotBlank(),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Text("Send til fakturering", fontSize = 18.sp)
-                                }
-                                Button(
-                                    onClick = {
-                                        coroutineScope.launch {
-                                            val updated = item.copy(
-                                                kvadratmeter = m2Value.replace(",", ".").toFloatOrNull(),
-                                                slutdatoHenstilling = manualSlutDate
-                                            )
-                                            viewModel.updateRow(context, updated, "Fakturer ikke", comment)
-                                            onDismiss()
-                                        }
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer)
-                                ) {
-                                    Text("Fakturer ikke", fontSize = 18.sp)
                                 }
                                 TextButton(onClick = { step = 1 }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
                                     Text("Tilbage", fontSize = 18.sp)

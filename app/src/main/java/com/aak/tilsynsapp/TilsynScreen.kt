@@ -55,7 +55,7 @@ fun prettyType(type: String?): String {
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TilsynScreen(
-    viewModel: VejmanViewModel,
+    viewModel: TilsynViewModel,
     onNavigateToRegelrytteren: () -> Unit,
     onNavigateToHistory: () -> Unit
 ) {
@@ -166,10 +166,12 @@ fun TilsynScreen(
     }
 }
 
+@Suppress("AssignedValueIsNeverRead")
 @Composable
-fun TilsynCard(item: TilsynItem, viewModel: VejmanViewModel) {
+fun TilsynCard(item: TilsynItem, viewModel: TilsynViewModel) {
     var expanded by remember { mutableStateOf(false) }
     var showInspectDialog by remember { mutableStateOf(false) }
+    @Suppress("UNUSED_VARIABLE")
     val context = LocalContext.current
 
     if (showInspectDialog) {
@@ -225,82 +227,7 @@ fun TilsynCard(item: TilsynItem, viewModel: VejmanViewModel) {
             }
 
             AnimatedVisibility(visible = expanded) {
-                Column(modifier = Modifier.padding(top = 12.dp)) {
-                    HorizontalDivider(thickness = 0.5.dp)
-                    if (item.type == "permission") {
-                        TilsynDetailRow("Ansøger", item.applicant)
-                        TilsynDetailRow("Marker", item.marker)
-                        TilsynDetailRow("Sag ID", item.caseId)
-                        TilsynDetailRow("Sagsnummer", item.caseNumber)
-                        TilsynDetailRow("Udstyr", item.rovmEquipmentType)
-                        TilsynDetailRow("Sagsmappenr", item.applicantFolderNumber)
-                        TilsynDetailRow("Ref", item.authorityReferenceNumber)
-                        TilsynDetailRow("Vejstatus", item.streetStatus)
-                        TilsynDetailRow("Initialer", item.initials)
-                        TilsynDetailRow("Relateret", item.connectedCase)
-                        TilsynDetailRow("Start", tilsynFormatDate(item.startDate))
-                        TilsynDetailRow("Slut", tilsynFormatDate(item.endDate))
-                    } else {
-                        TilsynDetailRow("Firma", item.firmanavn)
-                        TilsynDetailRow("Sag ID", item.id)
-                        TilsynDetailRow("Henstilling ID", item.henstillingId)
-                        TilsynDetailRow("CVR", item.cvr?.toString())
-                        TilsynDetailRow("Forseelse", item.forseelse)
-                        TilsynDetailRow("Tilladelsestype", item.tilladelsestype)
-                        TilsynDetailRow("Type", prettyType(item.tilladelsestype))
-                        // NORMAL in card expanded
-                        TilsynDetailRow("Areal", if (item.kvadratmeter != null) "${item.kvadratmeter} m²" else null)
-                        TilsynDetailRow("Start", item.startdatoHenstilling)
-                        TilsynDetailRow("Status", item.fakturaStatus)
-                    }
-
-                    // --- Unified History Section ---
-                    if (!item.inspections.isNullOrEmpty()) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text("Tilsynshistorik:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        item.inspections.reversed().forEach { record ->
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp)
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), MaterialTheme.shapes.small)
-                                    .padding(8.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        text = record.inspectorEmail.substringBefore("@").uppercase(),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = tilsynFormatDateShort(record.inspectedAt),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                if (!record.selection.isNullOrBlank()) {
-                                    Text(
-                                        text = "Status: ${record.selection}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                                if (!record.comment.isNullOrBlank()) {
-                                    Text(
-                                        text = record.comment,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontSize = 11.sp
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+                TilsynExpandedDetails(item)
             }
         }
     }
@@ -358,17 +285,18 @@ fun tilsynFormatDateShort(raw: String?): String {
     if (raw.isNullOrBlank()) return "-"
     return try {
         val parser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.ENGLISH)
-        val output = SimpleDateFormat("dd-MM HH:mm", Locale.getDefault())
-        output.format(parser.parse(raw)!!)
+        val date = parser.parse(raw)
+        val formatter = SimpleDateFormat("dd-MM-yyyy HH:mm", Locale.getDefault())
+        formatter.format(date ?: Date())
     } catch (_: Exception) {
         try {
             val parser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.ENGLISH)
-            val output = SimpleDateFormat("dd-MM HH:mm", Locale.getDefault())
+            val output = SimpleDateFormat("dd-MM-yyyy HH:mm", Locale.getDefault())
             output.format(parser.parse(raw)!!)
         } catch (_: Exception) {
             try {
                 val parser = SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH)
-                val output = SimpleDateFormat("dd-MM", Locale.getDefault())
+                val output = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
                 output.format(parser.parse(raw)!!)
             } catch (_: Exception) {
                 raw
@@ -385,11 +313,18 @@ fun tilsynFormatDate(raw: String?): String {
         output.format(parser.parse(raw)!!)
     } catch (_: Exception) {
         try {
-            val parser = SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH)
-            val output = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
+            // Fixed: Added support for naive ISO format to keep the clock
+            val parser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.ENGLISH)
+            val output = SimpleDateFormat("dd-MM-yyyy HH:mm", Locale.getDefault())
             output.format(parser.parse(raw)!!)
         } catch (_: Exception) {
-            raw
+            try {
+                val parser = SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH)
+                val output = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
+                output.format(parser.parse(raw)!!)
+            } catch (_: Exception) {
+                raw
+            }
         }
     }
 }
