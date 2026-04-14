@@ -3,6 +3,7 @@ package com.aak.tilsynsapp
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.core.graphics.scale
 import android.graphics.ImageDecoder
 import android.net.Uri
@@ -47,26 +48,71 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
-fun processImageForUpload(bitmap: Bitmap): ByteArray {
-    val maxDimension = 1920
-    
-    var width = bitmap.width
-    var height = bitmap.height
-    
-    if (width > maxDimension || height > maxDimension) {
-        val ratio = width.toFloat() / height.toFloat()
-        if (ratio > 1) {
-            width = maxDimension
-            height = (maxDimension / ratio).toInt()
-        } else {
-            height = maxDimension
-            width = (maxDimension * ratio).toInt()
+private const val MAX_DIMENSION = 1920
+
+/**
+ * Decode a bitmap from a content URI at a reduced resolution.
+ * Uses inSampleSize (API <28) or ImageDecoder size constraint (API 28+)
+ * to avoid allocating a full-resolution bitmap in memory.
+ */
+fun decodeSampledBitmap(context: android.content.Context, uri: Uri): Bitmap {
+    if (Build.VERSION.SDK_INT >= 28) {
+        val source = ImageDecoder.createSource(context.contentResolver, uri)
+        return ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+            val width = info.size.width
+            val height = info.size.height
+            if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+                val ratio = width.toFloat() / height.toFloat()
+                if (ratio > 1) {
+                    decoder.setTargetSize(MAX_DIMENSION, (MAX_DIMENSION / ratio).toInt())
+                } else {
+                    decoder.setTargetSize((MAX_DIMENSION * ratio).toInt(), MAX_DIMENSION)
+                }
+            }
+            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
         }
     }
-    
+
+    // API < 28: two-pass BitmapFactory decode
+    val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+
+    val rawWidth = options.outWidth
+    val rawHeight = options.outHeight
+    var inSampleSize = 1
+    if (rawWidth > MAX_DIMENSION || rawHeight > MAX_DIMENSION) {
+        val halfWidth = rawWidth / 2
+        val halfHeight = rawHeight / 2
+        while (halfWidth / inSampleSize >= MAX_DIMENSION && halfHeight / inSampleSize >= MAX_DIMENSION) {
+            inSampleSize *= 2
+        }
+    }
+
+    val decodeOptions = BitmapFactory.Options().apply { this.inSampleSize = inSampleSize }
+    val sampled = context.contentResolver.openInputStream(uri)?.use {
+        BitmapFactory.decodeStream(it, null, decodeOptions)
+    } ?: throw IllegalStateException("Could not open image URI")
+
+    return sampled
+}
+
+fun processImageForUpload(bitmap: Bitmap): ByteArray {
+    var width = bitmap.width
+    var height = bitmap.height
+
+    if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+        val ratio = width.toFloat() / height.toFloat()
+        if (ratio > 1) {
+            width = MAX_DIMENSION
+            height = (MAX_DIMENSION / ratio).toInt()
+        } else {
+            height = MAX_DIMENSION
+            width = (MAX_DIMENSION * ratio).toInt()
+        }
+    }
+
     val resized = bitmap.scale(width, height, true)
     val stream = ByteArrayOutputStream()
-    // 85% quality is high detail but still compressed
     resized.compress(Bitmap.CompressFormat.JPEG, 85, stream)
     return stream.toByteArray()
 }
@@ -92,14 +138,7 @@ fun InspectionDialog(
         if (success) {
             photoUri?.let { uri ->
                 try {
-                    val bitmap = if (Build.VERSION.SDK_INT < 28) {
-                        @Suppress("DEPRECATION")
-                        MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
-                    } else {
-                        val source = ImageDecoder.createSource(context.contentResolver, uri)
-                        ImageDecoder.decodeBitmap(source)
-                    }
-                    capturedBitmaps.add(bitmap)
+                    capturedBitmaps.add(decodeSampledBitmap(context, uri))
                 } catch (_: Exception) {
                 }
             }
@@ -120,16 +159,9 @@ fun InspectionDialog(
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         uris.forEach { uri ->
             try {
-                val bitmap = if (Build.VERSION.SDK_INT < 28) {
-                    @Suppress("DEPRECATION")
-                    MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
-                } else {
-                    val source = ImageDecoder.createSource(context.contentResolver, uri)
-                    ImageDecoder.decodeBitmap(source)
-                }
-                capturedBitmaps.add(bitmap)
-                } catch (_: Exception) {
-                }
+                capturedBitmaps.add(decodeSampledBitmap(context, uri))
+            } catch (_: Exception) {
+            }
         }
     }
 
