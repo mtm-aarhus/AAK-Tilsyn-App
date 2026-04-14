@@ -74,16 +74,27 @@ fun AppRoot(viewModel: TilsynViewModel) {
                     "Tilsyn" -> TilsynScreen(
                         viewModel = viewModel,
                         onNavigateToRegelrytteren = { currentScreen = "RegelRytteren" },
-                        onNavigateToHistory = { currentScreen = "History" }
+                        onNavigateToHistory = { currentScreen = "History" },
+                        onNavigateToMap = { currentScreen = "Map" }
                     )
                     "RegelRytteren" -> RegelRytterenScreen(
                         onNavigateToTilsyn = { currentScreen = "Tilsyn" },
-                        onNavigateToHistory = { currentScreen = "History" }
+                        onNavigateToHistory = { currentScreen = "History" },
+                        onNavigateToMap = { currentScreen = "Map" }
                     )
                     "History" -> HistoryScreen(
                         viewModel = viewModel,
                         onNavigateToTilsyn = { currentScreen = "Tilsyn" },
-                        onNavigateToRegelrytteren = { currentScreen = "RegelRytteren" }
+                        onNavigateToRegelrytteren = { currentScreen = "RegelRytteren" },
+                        onNavigateToHistory = { currentScreen = "History" },
+                        onNavigateToMap = { currentScreen = "Map" }
+                    )
+                    "Map" -> MapScreen(
+                        viewModel = viewModel,
+                        onNavigateToTilsyn = { currentScreen = "Tilsyn" },
+                        onNavigateToRegelrytteren = { currentScreen = "RegelRytteren" },
+                        onNavigateToHistory = { currentScreen = "History" },
+                        onNavigateToMap = { currentScreen = "Map" }
                     )
                 }
             }

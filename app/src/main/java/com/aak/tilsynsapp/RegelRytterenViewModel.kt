@@ -10,14 +10,23 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
+data class InspectorConfig(
+    val initial: String,
+    val vehicle: String, // "Bil" or "Cykel"
+    val isIncluded: Boolean = false
+)
+
 class RegelRytterenViewModel(application: Application) : AndroidViewModel(application) {
-    private val _bikes = MutableStateFlow(1)
-    private val _cars = MutableStateFlow(1)
+    private val _inspectors = MutableStateFlow(listOf(
+        InspectorConfig("DJI", "Bil"),
+        InspectorConfig("MOJUS", "Cykel"),
+        InspectorConfig("HAROB", "Cykel")
+    ))
+    val inspectors: StateFlow<List<InspectorConfig>> = _inspectors
+
     private val _vejman = MutableStateFlow(true)
     private val _henstillinger = MutableStateFlow(true)
 
-    val bikes: StateFlow<Int> = _bikes
-    val cars: StateFlow<Int> = _cars
     val vejman: StateFlow<Boolean> = _vejman
     val henstillinger: StateFlow<Boolean> = _henstillinger
 
@@ -35,8 +44,18 @@ class RegelRytterenViewModel(application: Application) : AndroidViewModel(applic
 
     private var timerJob: Job? = null
 
-    fun setBikes(value: Int) { _bikes.value = value }
-    fun setCars(value: Int) { _cars.value = value }
+    fun toggleInspector(initial: String) {
+        _inspectors.value = _inspectors.value.map {
+            if (it.initial == initial) it.copy(isIncluded = !it.isIncluded) else it
+        }
+    }
+
+    fun setVehicle(initial: String, vehicle: String) {
+        _inspectors.value = _inspectors.value.map {
+            if (it.initial == initial) it.copy(vehicle = vehicle) else it
+        }
+    }
+
     fun setVejman(value: Boolean) { _vejman.value = value }
     fun setHenstillinger(value: Boolean) { _henstillinger.value = value }
 
@@ -47,10 +66,12 @@ class RegelRytterenViewModel(application: Application) : AndroidViewModel(applic
     fun submit(context: Context) {
         if (_isSubmitting.value || _successLockout.value) return
 
-        if ((_bikes.value + _cars.value) == 0) {
-            _statusMessage.value = "Du skal vælge mindst én cykel eller bil"
+        val included = _inspectors.value.filter { it.isIncluded }
+        if (included.isEmpty()) {
+            _statusMessage.value = "Vælg mindst én tilsynsførende"
             return
         }
+        
         if (!_vejman.value && !_henstillinger.value) {
             _statusMessage.value = "Vælg mindst én type: Tilladelser eller Henstillinger"
             return
@@ -58,16 +79,23 @@ class RegelRytterenViewModel(application: Application) : AndroidViewModel(applic
 
         viewModelScope.launch {
             _isSubmitting.value = true
+            
+            // Map the included inspectors to a list of maps for the JSON payload
+            val inspectorData = included.map { 
+                mapOf("initial" to it.initial, "vehicle" to it.vehicle) 
+            }
+
             val result = ApiHelper.sendRegelrytterenPayload(
                 context = context,
-                bikes = _bikes.value,
-                cars = _cars.value,
+                inspectors = inspectorData,
                 vejman = _vejman.value,
                 henstillinger = _henstillinger.value
             )
             _statusMessage.value = result
             _isSubmitting.value = false
-            startLockout()
+            if (result == "Success") {
+                startLockout()
+            }
         }
     }
 

@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Search
@@ -30,7 +31,9 @@ import kotlinx.coroutines.launch
 fun HistoryScreen(
     viewModel: TilsynViewModel,
     onNavigateToTilsyn: () -> Unit,
-    onNavigateToRegelrytteren: () -> Unit
+    onNavigateToRegelrytteren: () -> Unit,
+    onNavigateToHistory: () -> Unit,
+    onNavigateToMap: () -> Unit
 ) {
     val items by viewModel.historyItems.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
@@ -57,10 +60,11 @@ fun HistoryScreen(
                 item.displayCaseNumber.lowercase().contains(query) ||
                 item.id.lowercase().contains(query)
             
-            val matchesHidden = if (showHidden) true else item.fakturaStatus != "Fakturer ikke"
+            val isHidden = item.hidden == true || item.fakturaStatus == "Fakturer ikke"
+            val matchesHidden = if (showHidden) true else !isHidden
             
             matchesSearch && matchesHidden
-        }.sortedByDescending { it.displayEndDate }
+        }.sortedByDescending { it.endDate }
     }
 
     Scaffold(
@@ -74,15 +78,21 @@ fun HistoryScreen(
                 )
                 NavigationBarItem(
                     selected = false,
-                    onClick = onNavigateToRegelrytteren,
-                    icon = { Icon(Icons.Default.Route, contentDescription = "RegelRytteren") },
-                    label = { Text("RegelRytteren") }
+                    onClick = onNavigateToMap,
+                    icon = { Icon(Icons.Default.Map, contentDescription = "Kort") },
+                    label = { Text("Kort") }
                 )
                 NavigationBarItem(
                     selected = true,
                     onClick = {},
                     icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Historik") },
                     label = { Text("Historik") }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = onNavigateToRegelrytteren,
+                    icon = { Icon(Icons.Default.Route, contentDescription = "RegelRytteren") },
+                    label = { Text("RegelRytteren") }
                 )
             }
         }
@@ -106,7 +116,7 @@ fun HistoryScreen(
                     checked = showHidden,
                     onCheckedChange = { showHidden = it }
                 )
-                Text("Vis skjulte henstillinger (Fakturer ikke)", style = MaterialTheme.typography.bodyMedium)
+                Text("Vis skjulte tilsyn", style = MaterialTheme.typography.bodyMedium)
             }
 
             PullToRefreshBox(
@@ -126,8 +136,8 @@ fun HistoryScreen(
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         items(filteredItems) { item ->
-                            HistoryCard(item, viewModel)
-                        }
+                        HistoryCard(item, viewModel, onNavigateToMap)
+                    }
                     }
                 }
             }
@@ -137,7 +147,7 @@ fun HistoryScreen(
 
 @Suppress("AssignedValueIsNeverRead")
 @Composable
-fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel) {
+fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     var showInspectDialog by remember { mutableStateOf(false) }
     @Suppress("UNUSED_VARIABLE")
@@ -153,6 +163,12 @@ fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel) {
         )
     }
 
+    val typeColor = when {
+        item.type == "henstilling" -> Color(0xFFFF9800) // Orange
+        item.vejmanDisplayState == "Færdig tilladelse" -> Color(0xFF2196F3) // Blue
+        else -> Color(0xFF4CAF50) // Green
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).clickable { expanded = !expanded },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
@@ -164,14 +180,14 @@ fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel) {
                     Text(item.displaySecondaryInfo, style = MaterialTheme.typography.bodyMedium)
                 }
                 Surface(
-                    color = (if (item.type == "henstilling") Color(0xFFFF9800) else Color(0xFF4CAF50)).copy(alpha = 0.15f),
+                    color = typeColor.copy(alpha = 0.15f),
                     shape = MaterialTheme.shapes.extraSmall
                 ) {
                     Text(
                         item.typeLabel,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (item.type == "henstilling") Color(0xFFFF9800) else Color(0xFF4CAF50),
+                        color = typeColor,
                         fontWeight = FontWeight.Black
                     )
                 }
@@ -185,6 +201,13 @@ fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel) {
                 Text("Sluttede: ${tilsynFormatDate(item.displayEndDate)}", style = MaterialTheme.typography.bodySmall)
                 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { 
+                        viewModel.selectMapItem(item)
+                        onNavigateToMap()
+                    }, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Map, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                    }
+
                     IconButton(onClick = { showInspectDialog = true }, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(28.dp))
                     }
@@ -204,7 +227,7 @@ fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel) {
                                 Spacer(Modifier.width(4.dp))
                                 Text("Fortryd fakturering", fontSize = 12.sp)
                             }
-                        } else if (status == "Fakturer ikke") {
+                        } else if (item.hidden == true) {
                             IconButton(onClick = {
                                 coroutineScope.launch {
                                     viewModel.updateRow(context, item, "Ny")
@@ -217,6 +240,17 @@ fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel) {
                                     modifier = Modifier.size(24.dp)
                                 )
                             }
+                        }
+                    } else if (item.hidden == true) {
+                        IconButton(onClick = {
+                            viewModel.toggleHidePermission(item.id, false) { }
+                        }, modifier = Modifier.size(32.dp)) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Undo,
+                                contentDescription = "Gendan (Vis)",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
                         }
                     }
                 }

@@ -31,11 +31,6 @@ import androidx.core.net.toUri
 import java.text.SimpleDateFormat
 import java.util.*
 
-fun cleanStreetForGrouping(street: String): String {
-    // Address cleaning is now handled by the API
-    return street
-}
-
 fun prettyType(type: String?): String {
     if (type == null) return "-"
     return when (type) {
@@ -57,7 +52,8 @@ fun prettyType(type: String?): String {
 fun TilsynScreen(
     viewModel: TilsynViewModel,
     onNavigateToRegelrytteren: () -> Unit,
-    onNavigateToHistory: () -> Unit
+    onNavigateToHistory: () -> Unit,
+    onNavigateToMap: () -> Unit
 ) {
     val items by viewModel.tilsynItems.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
@@ -86,7 +82,7 @@ fun TilsynScreen(
         }
     }
 
-    val groupedItems = filteredItems.groupBy { cleanStreetForGrouping(it.displayStreet) }
+    val groupedItems = filteredItems.groupBy { it.streetName ?: "Ukendt Vej" }
 
     Scaffold(
         bottomBar = {
@@ -99,15 +95,21 @@ fun TilsynScreen(
                 )
                 NavigationBarItem(
                     selected = false,
-                    onClick = onNavigateToRegelrytteren,
-                    icon = { Icon(Icons.Default.Route, contentDescription = "RegelRytteren") },
-                    label = { Text("RegelRytteren") }
+                    onClick = onNavigateToMap,
+                    icon = { Icon(Icons.Default.Map, contentDescription = "Kort") },
+                    label = { Text("Kort") }
                 )
                 NavigationBarItem(
                     selected = false,
                     onClick = onNavigateToHistory,
                     icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Historik") },
                     label = { Text("Historik") }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = onNavigateToRegelrytteren,
+                    icon = { Icon(Icons.Default.Route, contentDescription = "RegelRytteren") },
+                    label = { Text("RegelRytteren") }
                 )
             }
         }
@@ -156,7 +158,7 @@ fun TilsynScreen(
                                 }
                             }
                             items(itemsOnStreet) { item ->
-                                TilsynCard(item, viewModel)
+                                TilsynCard(item, viewModel, onNavigateToMap)
                             }
                         }
                     }
@@ -168,7 +170,7 @@ fun TilsynScreen(
 
 @Suppress("AssignedValueIsNeverRead")
 @Composable
-fun TilsynCard(item: TilsynItem, viewModel: TilsynViewModel) {
+fun TilsynCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     var showInspectDialog by remember { mutableStateOf(false) }
     @Suppress("UNUSED_VARIABLE")
@@ -180,6 +182,12 @@ fun TilsynCard(item: TilsynItem, viewModel: TilsynViewModel) {
             viewModel = viewModel,
             onDismiss = { showInspectDialog = false }
         )
+    }
+
+    val typeColor = when {
+        item.type == "henstilling" -> Color(0xFFFF9800) // Orange
+        item.vejmanDisplayState == "Færdig tilladelse" -> Color(0xFF2196F3) // Blue
+        else -> Color(0xFF4CAF50) // Green
     }
 
     Card(
@@ -194,7 +202,7 @@ fun TilsynCard(item: TilsynItem, viewModel: TilsynViewModel) {
                     Text(item.displayStreet, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Surface(
-                    color = (if (item.type == "henstilling") Color(0xFFFF9800) else Color(0xFF4CAF50)).copy(alpha = 0.15f),
+                    color = typeColor.copy(alpha = 0.15f),
                     shape = MaterialTheme.shapes.extraSmall
                 ) {
                     Text(
@@ -202,7 +210,7 @@ fun TilsynCard(item: TilsynItem, viewModel: TilsynViewModel) {
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                         style = MaterialTheme.typography.labelSmall,
                         fontSize = 11.sp,
-                        color = if (item.type == "henstilling") Color(0xFFFF9800) else Color(0xFF4CAF50),
+                        color = typeColor,
                         fontWeight = FontWeight.Black
                     )
                 }
@@ -213,10 +221,8 @@ fun TilsynCard(item: TilsynItem, viewModel: TilsynViewModel) {
                 Text("$endLabel: ${tilsynFormatDateShort(item.displayEndDate)}", style = MaterialTheme.typography.bodyMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     IconButton(onClick = {
-                        val address = "${item.displayStreet}, Aarhus"
-                        val gmmIntentUri = "geo:0,0?q=${Uri.encode(address)}".toUri()
-                        val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentUri).apply { setPackage("com.google.android.apps.maps") }
-                        context.startActivity(mapIntent)
+                        viewModel.selectMapItem(item)
+                        onNavigateToMap()
                     }, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Default.Map, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
                     }

@@ -33,13 +33,13 @@ fun TilsynExpandedDetails(item: TilsynItem) {
             TilsynDetailRow("Faktura Status", item.fakturaStatus)
             TilsynDetailRow("Sag ID", item.id)
             TilsynDetailRow("Firma", item.firmanavn)
-            TilsynDetailRow("CVR", item.cvr?.toString())
+            TilsynDetailRow("CVR", item.cvr)
             TilsynDetailRow("Forseelse", item.forseelse)
             TilsynDetailRow("Tilladelsestype", prettyType(item.tilladelsestype))
             TilsynDetailRow("Areal", if (item.kvadratmeter != null) "${item.kvadratmeter} m²" else null)
-            TilsynDetailRow("Start", tilsynFormatDate(item.startdatoHenstilling))
+            TilsynDetailRow("Start", tilsynFormatDate(item.startDate))
             val slutLabel = if (item.fakturaStatus == "Ny") "Sidst set" else "Slut"
-            TilsynDetailRow(slutLabel, tilsynFormatDate(item.slutdatoHenstilling))
+            TilsynDetailRow(slutLabel, tilsynFormatDate(item.endDate))
         }
 
         // Unified History Section
@@ -82,7 +82,7 @@ fun TilsynExpandedDetails(item: TilsynItem) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    if (record.kvadratmeter != null || !record.slutdato.isNullOrBlank()) {
+                    if (record.kvadratmeter != null || !record.endDate.isNullOrBlank()) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (record.kvadratmeter != null) {
                                 Text(
@@ -91,9 +91,9 @@ fun TilsynExpandedDetails(item: TilsynItem) {
                                     fontWeight = FontWeight.Medium
                                 )
                             }
-                            if (!record.slutdato.isNullOrBlank()) {
+                            if (!record.endDate.isNullOrBlank()) {
                                 Text(
-                                    text = "Slutdato: ${record.slutdato}",
+                                    text = "Slutdato: ${record.endDate}",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Medium
                                 )

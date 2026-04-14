@@ -184,7 +184,7 @@ fun InspectionDialog(
                 .padding(vertical = 8.dp),
             shape = MaterialTheme.shapes.extraLarge,
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp
+            tonalElevation = 0.dp
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 IconButton(
@@ -215,16 +215,16 @@ fun InspectionDialog(
                         ) {
                             Column {
                                 if (item.type == "henstilling") {
-                                    TilsynDialogDetailRow("Adresse", item.adresse)
+                                    TilsynDialogDetailRow("Adresse", item.fullAddress)
                                     TilsynDialogDetailRow("Sag ID", item.id)
                                     TilsynDialogDetailRow("Firma", item.firmanavn)
-                                    TilsynDialogDetailRow("CVR", item.cvr?.toString())
+                                    TilsynDialogDetailRow("CVR", item.cvr)
                                     TilsynDialogDetailRow("Forseelse", item.forseelse)
                                     TilsynDialogDetailRow("Type", prettyType(item.tilladelsestype))
                                     TilsynDialogDetailRow("Areal", if (item.kvadratmeter != null) "${item.kvadratmeter} m²" else null)
-                                    TilsynDialogDetailRow("Start", tilsynFormatDate(item.startdatoHenstilling))
+                                    TilsynDialogDetailRow("Start", tilsynFormatDate(item.startDate))
                                     val slutLabel = if (item.fakturaStatus == "Ny") "Sidst set" else "Slut"
-                                    TilsynDialogDetailRow(slutLabel, tilsynFormatDate(item.slutdatoHenstilling))
+                                    TilsynDialogDetailRow(slutLabel, tilsynFormatDate(item.endDate))
                                 } else {
                                     TilsynDialogDetailRow("Vejnavn", item.displayStreet)
                                     TilsynDialogDetailRow("Sag ID", item.caseId)
@@ -281,7 +281,7 @@ fun InspectionDialog(
                                         Icon(Icons.Default.CalendarToday, "Vælg dato", modifier = Modifier.size(32.dp))
                                     }
                                 }
-                                Text("Sidst registreret slutdato: ${item.displayEndDate ?: "-"}", style = MaterialTheme.typography.bodyMedium)
+                                Text("Sidst registreret slutdato: ${tilsynFormatDate(item.endDate)}", style = MaterialTheme.typography.bodyMedium)
                             }
                         } else {
                             // Vejman Permission Inspection
@@ -440,7 +440,7 @@ fun InspectionDialog(
                                             coroutineScope.launch {
                                                 val updated = item.copy(
                                                     kvadratmeter = m2Value.replace(",", ".").toFloatOrNull(),
-                                                    slutdatoHenstilling = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                                                    endDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
                                                 )
                                                 viewModel.updateRow(context, updated, "Ny", comment)
                                                 onDismiss()
@@ -499,7 +499,7 @@ fun InspectionDialog(
                                         coroutineScope.launch {
                                             val updated = item.copy(
                                                 kvadratmeter = m2Value.replace(",", ".").toFloatOrNull(),
-                                                slutdatoHenstilling = manualSlutDate
+                                                endDate = manualSlutDate
                                             )
                                             viewModel.updateRow(context, updated, "Til fakturering", comment)
                                             onDismiss()

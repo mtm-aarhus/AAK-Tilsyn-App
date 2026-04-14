@@ -40,6 +40,13 @@ class TilsynViewModel(application: Application) : AndroidViewModel(application) 
     private val _versionMessage = MutableStateFlow<String?>(null)
     val versionMessage: StateFlow<String?> = _versionMessage
 
+    private val _selectedMapItem = MutableStateFlow<TilsynItem?>(null)
+    val selectedMapItem: StateFlow<TilsynItem?> = _selectedMapItem
+
+    fun selectMapItem(item: TilsynItem?) {
+        _selectedMapItem.value = item
+    }
+
     init {
         viewModelScope.launch {
             val context = getApplication<Application>()
@@ -78,7 +85,7 @@ class TilsynViewModel(application: Application) : AndroidViewModel(application) 
             val history = ApiHelper.getUnifiedHistory(context)
 
             if (tasks != null) {
-                _tilsynItems.value = tasks
+                _tilsynItems.value = tasks.filter { it.hidden != true }
             }
             if (history != null) {
                 _historyItems.value = history
@@ -113,15 +120,15 @@ class TilsynViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun hidePermission(id: String, onResult: (Boolean) -> Unit) {
+    fun toggleHidePermission(id: String, hide: Boolean, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
-            _loadingStatus.value = "Skjuler..."
+            _loadingStatus.value = if (hide) "Skjuler..." else "Gendannet..."
             val success = ApiHelper.unifiedInspect(
                 context = getApplication(),
                 id = id,
                 type = "permission",
-                comment = "Skjult fra tilsyn",
-                updates = mapOf("hidden" to true)
+                comment = if (hide) "Skjult fra tilsyn" else "Gendannet fra historik",
+                updates = mapOf("hidden" to hide)
             )
             if (success) {
                 refreshDataAsync()
@@ -129,6 +136,10 @@ class TilsynViewModel(application: Application) : AndroidViewModel(application) 
             _loadingStatus.value = null
             onResult(success)
         }
+    }
+
+    fun hidePermission(id: String, onResult: (Boolean) -> Unit) {
+        toggleHidePermission(id, true, onResult)
     }
 
     fun uploadImage(id: String, imageBytes: ByteArray, fileName: String? = null, onResult: (Boolean) -> Unit) {
@@ -143,8 +154,15 @@ class TilsynViewModel(application: Application) : AndroidViewModel(application) 
         
         val updates = mutableMapOf<String, Any?>()
         updatedRow.kvadratmeter?.let { updates["kvadratmeter"] = it }
-        updatedRow.slutdatoHenstilling?.let { updates["slutdato"] = it }
-        newStatus?.let { updates["fakturaStatus"] = it }
+        updatedRow.endDate?.let { updates["end_date"] = it }
+        newStatus?.let { 
+            updates["fakturaStatus"] = it 
+            if (it == "Fakturer ikke") {
+                updates["hidden"] = true
+            } else if (it == "Ny") {
+                updates["hidden"] = false
+            }
+        }
 
         val success = ApiHelper.unifiedInspect(
             context = context,

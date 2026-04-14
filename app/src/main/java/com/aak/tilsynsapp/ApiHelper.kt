@@ -127,12 +127,30 @@ object ApiHelper {
         }
     }
 
-    suspend fun sendRegelrytterenPayload(context: Context, bikes: Int, cars: Int, vejman: Boolean, henstillinger: Boolean): String = withContext(Dispatchers.IO) {
+    suspend fun sendRegelrytterenPayload(
+        context: Context, 
+        inspectors: List<Map<String, String>>, 
+        vejman: Boolean, 
+        henstillinger: Boolean
+    ): String = withContext(Dispatchers.IO) {
         try {
             val apiKey = SecurePrefs.getApiKey(context) ?: return@withContext "Ingen API-nøgle fundet"
-            val payload = mapOf("queue_name" to "RegelRytteren", "status" to "NEW", "data" to mapOf("bikes" to bikes, "cars" to cars, "vejman" to vejman, "henstillinger" to henstillinger))
+            val payload = mapOf(
+                "queue_name" to "RegelRytteren", 
+                "status" to "NEW", 
+                "data" to mapOf(
+                    "inspectors" to inspectors, 
+                    "vejman" to vejman, 
+                    "henstillinger" to henstillinger
+                )
+            )
             val requestBody = gson.toJson(payload).toRequestBody("application/json".toMediaType())
-            val request = Request.Builder().url("${getBaseUrl()}queue").post(requestBody).addHeader("X-API-Key", apiKey).addHeader("Content-Type", "application/json").build()
+            val request = Request.Builder()
+                .url("${getBaseUrl()}queue")
+                .post(requestBody)
+                .addHeader("X-API-Key", apiKey)
+                .addHeader("Content-Type", "application/json")
+                .build()
             client.newCall(request).execute().use { response ->
                 if (response.isSuccessful) "Success" else "Fejl: ${response.code}"
             }
