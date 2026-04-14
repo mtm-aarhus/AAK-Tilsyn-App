@@ -178,7 +178,7 @@ fun InspectorItem(
         )
         
         Text(
-            text = inspector.initial,
+            text = inspector.name,
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.weight(1f).clickable { onToggle() }
         )

@@ -12,15 +12,16 @@ import kotlinx.coroutines.launch
 
 data class InspectorConfig(
     val initial: String,
+    val name: String,
     val vehicle: String, // "Bil" or "Cykel"
     val isIncluded: Boolean = false
 )
 
 class RegelRytterenViewModel(application: Application) : AndroidViewModel(application) {
     private val _inspectors = MutableStateFlow(listOf(
-        InspectorConfig("DJI", "Bil"),
-        InspectorConfig("MOJUS", "Cykel"),
-        InspectorConfig("HAROB", "Cykel")
+        InspectorConfig("HAROB", "Harald", "Cykel"),
+        InspectorConfig("DJI", "Jimmy", "Bil"),
+        InspectorConfig("MOJUS", "Just", "Cykel")
     ))
     val inspectors: StateFlow<List<InspectorConfig>> = _inspectors
 

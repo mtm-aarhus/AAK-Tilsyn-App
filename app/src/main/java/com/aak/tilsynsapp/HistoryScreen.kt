@@ -41,6 +41,9 @@ fun HistoryScreen(
 
     var searchQuery by remember { mutableStateOf("") }
     var showHidden by remember { mutableStateOf(false) }
+    
+    val filterOptions = listOf("Henstilling", "Ny tilladelse", "Færdig tilladelse")
+    var selectedFilters by remember { mutableStateOf(filterOptions.toSet()) }
 
     LaunchedEffect(Unit) {
         viewModel.refreshDataAsync()
@@ -51,7 +54,7 @@ fun HistoryScreen(
         viewModel.refreshDataAsync()
     }
 
-    val filteredItems = remember(items, searchQuery, showHidden) {
+    val filteredItems = remember(items, searchQuery, showHidden, selectedFilters) {
         val query = searchQuery.trim().lowercase()
         items.filter { item ->
             val matchesSearch = query.isEmpty() || 
@@ -62,8 +65,15 @@ fun HistoryScreen(
             
             val isHidden = item.hidden == true || item.fakturaStatus == "Fakturer ikke"
             val matchesHidden = if (showHidden) true else !isHidden
+
+            val itemType = when {
+                item.type == "henstilling" -> "Henstilling"
+                item.vejmanDisplayState == "Færdig tilladelse" -> "Færdig tilladelse"
+                else -> "Ny tilladelse"
+            }
+            val matchesType = itemType in selectedFilters
             
-            matchesSearch && matchesHidden
+            matchesSearch && matchesHidden && matchesType
         }.sortedByDescending { it.endDate }
     }
 
@@ -101,12 +111,33 @@ fun HistoryScreen(
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(top = 12.dp, bottom = 4.dp),
                 placeholder = { Text("Søg i historik...") },
                 leadingIcon = { Icon(Icons.Default.Search, null) },
                 singleLine = true,
                 shape = MaterialTheme.shapes.medium
             )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                filterOptions.forEach { option ->
+                    FilterChip(
+                        selected = option in selectedFilters,
+                        onClick = {
+                            selectedFilters = if (option in selectedFilters) {
+                                if (selectedFilters.size > 1) selectedFilters - option else selectedFilters
+                            } else {
+                                selectedFilters + option
+                            }
+                        },
+                        label = { Text(option, fontSize = 12.sp) }
+                    )
+                }
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),

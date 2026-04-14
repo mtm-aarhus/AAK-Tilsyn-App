@@ -60,6 +60,9 @@ fun TilsynScreen(
     val loading by viewModel.loadingStatus.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
+    
+    val filterOptions = listOf("Henstilling", "Ny tilladelse", "Færdig tilladelse")
+    var selectedFilters by remember { mutableStateOf(filterOptions.toSet()) }
 
     LaunchedEffect(Unit) {
         viewModel.refreshDataAsync()
@@ -70,15 +73,25 @@ fun TilsynScreen(
         viewModel.refreshDataAsync()
     }
 
-    val filteredItems = remember(items, searchQuery) {
+    val filteredItems = remember(items, searchQuery, selectedFilters) {
         val query = searchQuery.trim().lowercase()
         val visibleItems = items.filter { it.hidden != true }
-        if (query.isEmpty()) visibleItems
-        else visibleItems.filter { 
-            it.displayStreet.lowercase().contains(query) ||
-            it.displaySecondaryInfo.lowercase().contains(query) ||
-            it.displayCaseNumber.lowercase().contains(query) ||
-            it.id.lowercase().contains(query)
+        
+        visibleItems.filter { item ->
+            val matchesSearch = query.isEmpty() || 
+                item.displayStreet.lowercase().contains(query) ||
+                item.displaySecondaryInfo.lowercase().contains(query) ||
+                item.displayCaseNumber.lowercase().contains(query) ||
+                item.id.lowercase().contains(query)
+            
+            val itemType = when {
+                item.type == "henstilling" -> "Henstilling"
+                item.vejmanDisplayState == "Færdig tilladelse" -> "Færdig tilladelse"
+                else -> "Ny tilladelse"
+            }
+            val matchesType = itemType in selectedFilters
+            
+            matchesSearch && matchesType
         }
     }
 
@@ -118,12 +131,33 @@ fun TilsynScreen(
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(top = 12.dp, bottom = 4.dp),
                 placeholder = { Text("Søg på vej, sag, ansøger...") },
                 leadingIcon = { Icon(Icons.Default.Search, null) },
                 singleLine = true,
                 shape = MaterialTheme.shapes.medium
             )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                filterOptions.forEach { option ->
+                    FilterChip(
+                        selected = option in selectedFilters,
+                        onClick = {
+                            selectedFilters = if (option in selectedFilters) {
+                                if (selectedFilters.size > 1) selectedFilters - option else selectedFilters
+                            } else {
+                                selectedFilters + option
+                            }
+                        },
+                        label = { Text(option, fontSize = 12.sp) }
+                    )
+                }
+            }
 
             PullToRefreshBox(
                 modifier = Modifier.fillMaxSize(),
