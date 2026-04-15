@@ -69,9 +69,17 @@ fun MapScreen(
     val context = LocalContext.current
     val mapView = remember { MapView(context) }
     
-    val sharedPrefs = remember { PreferenceManager.getDefaultSharedPreferences(context) }
+    val sharedPrefs = remember { context.getSharedPreferences("${context.packageName}_preferences", Context.MODE_PRIVATE) }
     var isDarkMode by remember { mutableStateOf(sharedPrefs.getBoolean("map_dark_mode", false)) }
     var zoomLevel by remember { mutableDoubleStateOf(15.0) }
+
+    // Cache til markers for at undgå jank og OOM ved zoom
+    val markerCache = remember { mutableMapOf<Pair<Int, Int>, Drawable>() }
+    fun getCachedMarker(color: Int, size: Int): Drawable {
+        return markerCache.getOrPut(color to size) {
+            createDotMarker(context, color, size)
+        }
+    }
 
     // Initialize Osmdroid
     remember {
@@ -189,9 +197,9 @@ fun MapScreen(
             LaunchedEffect(selectedMapItem) {
                 selectedMapItem?.let { item ->
                     if (item.latitude != null && item.longitude != null) {
-                        val point = GeoPoint(item.latitude!!, item.longitude!!)
-                        mapView.controller.animateTo(point)
-                        mapView.controller.setZoom(18.5)
+                        val point = GeoPoint(item.latitude, item.longitude)
+                        // Brug animateTo med zoom for en blødere overgang
+                        mapView.controller.animateTo(point, 18.0, 800L)
                     }
                 }
             }
@@ -216,15 +224,17 @@ fun MapScreen(
                         addMapListener(object : org.osmdroid.events.MapListener {
                             override fun onScroll(event: org.osmdroid.events.ScrollEvent?): Boolean = false
                             override fun onZoom(event: org.osmdroid.events.ZoomEvent?): Boolean {
-                                zoomLevel = event?.zoomLevel ?: 15.0
+                                // Hent præcis zoom med decimaler (f.eks. 15.5) i stedet for bare et heltal
+                                zoomLevel = mapView.zoomLevelDouble
                                 return false
                             }
                         })
                     }
                 },
                 update = { view ->
-                    val currentZoom = view.zoomLevelDouble
-                    val markerSize = (48 + (currentZoom - 14).coerceAtLeast(0.0) * 18).toInt().coerceIn(48, 150)
+                    val currentZoom = zoomLevel
+                    // Nedskaleret: Start ved 40px, læg 12px til per zoom-level over 14. Max 110px.
+                    val markerSize = (40 + (currentZoom - 14).coerceAtLeast(0.0) * 12).toInt().coerceIn(40, 110)
 
                     if (isDarkMode) {
                         val matrix = ColorMatrix()
@@ -239,8 +249,10 @@ fun MapScreen(
                         view.overlayManager.tilesOverlay.setColorFilter(null)
                     }
 
+                    // Fjern gamle markers
                     view.overlays.removeAll { it is Marker }
 
+                    // Filtrer og grupper items der har koordinater
                     val markerGroups = items.filter { it.latitude != null && it.longitude != null }
                         .groupBy { GeoPoint(it.latitude!!, it.longitude!!) }
 
@@ -248,6 +260,7 @@ fun MapScreen(
                         itemsAtPoint.forEachIndexed { index, item ->
                             val marker = Marker(view)
                             if (itemsAtPoint.size > 1) {
+                                // Hvis der er flere på samme spot, spred dem lidt
                                 val offset = 0.00005 * index 
                                 marker.position = GeoPoint(basePoint.latitude + offset, basePoint.longitude + offset)
                             } else {
@@ -263,7 +276,8 @@ fun MapScreen(
                                 else -> MapColorNy
                             }
                             
-                            marker.icon = createDotMarker(context, color.toArgb(), markerSize)
+                            // Nu bruger vi cachet marker i stedet for at oprette en ny hver gang
+                            marker.icon = getCachedMarker(color.toArgb(), markerSize)
                             marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                             
                             marker.setOnMarkerClickListener { m, _ ->
@@ -274,6 +288,7 @@ fun MapScreen(
                             view.overlays.add(marker)
                         }
                     }
+                    view.invalidate() // Tving kortet til at gentegne
                 },
                 modifier = Modifier.fillMaxSize()
             )
