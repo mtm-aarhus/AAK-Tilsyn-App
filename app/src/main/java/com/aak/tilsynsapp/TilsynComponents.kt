@@ -29,6 +29,13 @@ fun TilsynExpandedDetails(item: TilsynItem) {
             TilsynDetailRow("Initialer", item.initials)
             TilsynDetailRow("Start", tilsynFormatDate(item.startDate))
             TilsynDetailRow("Slut", tilsynFormatDate(item.endDate))
+        } else if (item.type == "indmeldt") {
+            TilsynDetailRow("Sagsnummer", item.caseNumber)
+            TilsynDetailRow("Titel", item.title)
+            TilsynDetailRow("Beskrivelse", item.description)
+            TilsynDetailRow("Adresse", item.fullAddress)
+            TilsynDetailRow("Oprettet af", item.createdBy)
+            TilsynDetailRow("Oprettet", tilsynFormatDate(item.createdAt))
         } else {
             TilsynDetailRow("Faktura Status", item.fakturaStatus)
             TilsynDetailRow("Sag ID", item.id)

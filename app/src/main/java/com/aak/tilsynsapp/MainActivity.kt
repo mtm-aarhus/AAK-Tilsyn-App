@@ -75,7 +75,8 @@ fun AppRoot(viewModel: TilsynViewModel) {
                         viewModel = viewModel,
                         onNavigateToRegelrytteren = { currentScreen = "RegelRytteren" },
                         onNavigateToHistory = { currentScreen = "History" },
-                        onNavigateToMap = { currentScreen = "Map" }
+                        onNavigateToMap = { currentScreen = "Map" },
+                        onNavigateToCreateIndmeldt = { currentScreen = "CreateIndmeldt" }
                     )
                     "RegelRytteren" -> RegelRytterenScreen(
                         onNavigateToTilsyn = { currentScreen = "Tilsyn" },
@@ -95,6 +96,11 @@ fun AppRoot(viewModel: TilsynViewModel) {
                         onNavigateToRegelrytteren = { currentScreen = "RegelRytteren" },
                         onNavigateToHistory = { currentScreen = "History" },
                         onNavigateToMap = { currentScreen = "Map" }
+                    )
+                    "CreateIndmeldt" -> CreateIndmeldtScreen(
+                        viewModel = viewModel,
+                        onBack = { currentScreen = "Tilsyn" },
+                        onCreated = { currentScreen = "Tilsyn" }
                     )
                 }
             }

@@ -44,28 +44,47 @@ data class TilsynItem(
     @SerializedName("Kvadratmeter") val kvadratmeter: Float? = null,
     @SerializedName("Forseelse") val forseelse: String? = null,
     @SerializedName("FirmaNavn") val firmanavn: String? = null,
-    @SerializedName("FakturaStatus") val fakturaStatus: String? = null
+    @SerializedName("FakturaStatus") val fakturaStatus: String? = null,
+
+    // Indmeldt specific (ad-hoc tilsyn created manually)
+    @SerializedName("title") val title: String? = null,
+    @SerializedName("description") val description: String? = null,
+    @SerializedName("created_by") val createdBy: String? = null,
+    @SerializedName("created_at") val createdAt: String? = null,
+    @SerializedName("created_by_source") val createdBySource: String? = null
 ) {
     val displayStreet: String
         get() = fullAddress ?: streetName ?: "Ukendt Vej"
 
     val displayCaseNumber: String
-        get() = (if (type == "permission") caseNumber else henstillingId) ?: "Ingen Sag"
+        get() = when (type) {
+            "permission" -> caseNumber
+            "indmeldt" -> caseNumber
+            else -> henstillingId
+        } ?: "Ingen Sag"
 
     val displaySecondaryInfo: String
-        get() = (if (type == "permission") applicant else firmanavn) ?: "-"
+        get() = when (type) {
+            "permission" -> applicant
+            "indmeldt" -> createdBy
+            else -> firmanavn
+        } ?: "-"
 
     val displayEquipment: String
-        get() = (if (type == "permission") rovmEquipmentType else forseelse) ?: "-"
+        get() = when (type) {
+            "permission" -> rovmEquipmentType
+            "indmeldt" -> title
+            else -> forseelse
+        } ?: "-"
 
     val displayEndDate: String?
         get() = endDate
 
     val typeLabel: String
-        get() = if (type == "permission") {
-            vejmanDisplayState?.uppercase() ?: "TILLADELSE"
-        } else {
-            "HENSTILLING"
+        get() = when (type) {
+            "permission" -> vejmanDisplayState?.uppercase() ?: "TILLADELSE"
+            "indmeldt" -> "INDMELDT"
+            else -> "HENSTILLING"
         }
 }
 

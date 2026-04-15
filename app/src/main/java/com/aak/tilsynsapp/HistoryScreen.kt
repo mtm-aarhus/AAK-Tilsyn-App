@@ -2,9 +2,11 @@ package com.aak.tilsynsapp
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Undo
@@ -42,7 +44,7 @@ fun HistoryScreen(
     var searchQuery by remember { mutableStateOf("") }
     var showHidden by remember { mutableStateOf(false) }
     
-    val filterOptions = listOf("Henstilling", "Ny tilladelse", "Færdig tilladelse")
+    val filterOptions = listOf("Henstilling", "Ny till.", "Færdig till.", "Indmeldt")
     var selectedFilters by remember { mutableStateOf(filterOptions.toSet()) }
 
     LaunchedEffect(Unit) {
@@ -68,8 +70,9 @@ fun HistoryScreen(
 
             val itemType = when {
                 item.type == "henstilling" -> "Henstilling"
-                item.vejmanDisplayState == "Færdig tilladelse" -> "Færdig tilladelse"
-                else -> "Ny tilladelse"
+                item.type == "indmeldt" -> "Indmeldt"
+                item.vejmanDisplayState == "Færdig tilladelse" -> "Færdig till."
+                else -> "Ny till."
             }
             val matchesType = itemType in selectedFilters
             
@@ -121,6 +124,7 @@ fun HistoryScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -196,6 +200,7 @@ fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: (
 
     val typeColor = when {
         item.type == "henstilling" -> Color(0xFFFF9800) // Orange
+        item.type == "indmeldt" -> Color(0xFF00BCD4) // Cyan
         item.vejmanDisplayState == "Færdig tilladelse" -> Color(0xFF2196F3) // Blue
         else -> Color(0xFF4CAF50) // Green
     }
@@ -207,8 +212,24 @@ fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: (
         Column(modifier = Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(item.displayStreet, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(item.displaySecondaryInfo, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        item.displayStreet,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    // For 'indmeldt' we show the title here instead of the creator's initials;
+                    // initials are visible when expanded.
+                    val secondary = if (item.type == "indmeldt") item.title.orEmpty() else item.displaySecondaryInfo
+                    if (secondary.isNotBlank()) {
+                        Text(
+                            secondary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                    }
                 }
                 Surface(
                     color = typeColor.copy(alpha = 0.15f),
@@ -229,7 +250,9 @@ fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: (
                 horizontalArrangement = Arrangement.SpaceBetween, 
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Sluttede: ${tilsynFormatDate(item.displayEndDate)}", style = MaterialTheme.typography.bodySmall)
+                val endLabel = if (item.type == "indmeldt") "Oprettet" else "Sluttede"
+                val endValue = if (item.type == "indmeldt") item.createdAt else item.displayEndDate
+                Text("$endLabel: ${tilsynFormatDate(endValue)}", style = MaterialTheme.typography.bodySmall)
                 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { 

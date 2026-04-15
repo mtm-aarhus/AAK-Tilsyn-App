@@ -142,6 +142,58 @@ class TilsynViewModel(application: Application) : AndroidViewModel(application) 
         toggleHidePermission(id, true, onResult)
     }
 
+    fun inspectIndmeldt(id: String, comment: String, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            _loadingStatus.value = "Gemmer tilsyn..."
+            // Server looks up item_type from Cosmos, so the payload 'type' is only for logging.
+            val success = ApiHelper.unifiedInspect(
+                context = getApplication(),
+                id = id,
+                type = "indmeldt",
+                comment = comment
+            )
+            if (success) {
+                refreshDataAsync()
+            }
+            _loadingStatus.value = null
+            onResult(success)
+        }
+    }
+
+    fun createIndmeldt(
+        fullAddress: String,
+        streetName: String?,
+        latitude: Double,
+        longitude: Double,
+        title: String,
+        description: String?,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            _loadingStatus.value = "Opretter indmeldt tilsyn..."
+            val context = getApplication<Application>()
+            val email = SecurePrefs.getEmail(context) ?: ""
+            val initials = email.substringBefore("@").uppercase().ifBlank { "UNKNOWN" }
+
+            val result = ApiHelper.createIndmeldt(
+                context = context,
+                fullAddress = fullAddress,
+                streetName = streetName,
+                latitude = latitude,
+                longitude = longitude,
+                title = title,
+                description = description,
+                createdBy = initials,
+                createdBySource = "app",
+            )
+            if (result.success) {
+                refreshDataAsync()
+            }
+            _loadingStatus.value = null
+            onResult(result.success, result.caseNumber)
+        }
+    }
+
     fun uploadImage(id: String, imageBytes: ByteArray, fileName: String? = null, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
             val success = ApiHelper.uploadImage(getApplication(), id, imageBytes, fileName)

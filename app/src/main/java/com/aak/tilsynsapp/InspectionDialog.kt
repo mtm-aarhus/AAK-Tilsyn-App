@@ -257,6 +257,13 @@ fun InspectionDialog(
                                     TilsynDialogDetailRow("Start", tilsynFormatDate(item.startDate))
                                     val slutLabel = if (item.fakturaStatus == "Ny") "Sidst set" else "Slut"
                                     TilsynDialogDetailRow(slutLabel, tilsynFormatDate(item.endDate))
+                                } else if (item.type == "indmeldt") {
+                                    TilsynDialogDetailRow("Sagsnummer", item.caseNumber)
+                                    TilsynDialogDetailRow("Titel", item.title)
+                                    TilsynDialogDetailRow("Beskrivelse", item.description)
+                                    TilsynDialogDetailRow("Adresse", item.fullAddress)
+                                    TilsynDialogDetailRow("Oprettet af", item.createdBy)
+                                    TilsynDialogDetailRow("Oprettet", tilsynFormatDate(item.createdAt))
                                 } else {
                                     TilsynDialogDetailRow("Vejnavn", item.displayStreet)
                                     TilsynDialogDetailRow("Sag ID", item.caseId)
@@ -271,7 +278,17 @@ fun InspectionDialog(
 
                         Spacer(Modifier.height(16.dp))
 
-                        if (item.type == "henstilling") {
+                        if (item.type == "indmeldt") {
+                            OutlinedTextField(
+                                value = comment,
+                                onValueChange = { comment = it },
+                                label = { Text("Kommentar", fontSize = 18.sp) },
+                                modifier = Modifier.fillMaxWidth(),
+                                placeholder = { Text("Skriv observationer...") },
+                                minLines = 3,
+                                maxLines = 6
+                            )
+                        } else if (item.type == "henstilling") {
                             if (step == 1) {
                                 OutlinedTextField(
                                     value = m2Value,
@@ -461,7 +478,31 @@ fun InspectionDialog(
                             .padding(horizontal = 20.dp, vertical = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        if (item.type == "henstilling") {
+                        if (item.type == "indmeldt") {
+                            Button(
+                                onClick = {
+                                    viewModel.inspectIndmeldt(item.id, comment) { success ->
+                                        if (success) onDismiss()
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Gem tilsyn", fontSize = 18.sp)
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.hidePermission(item.id) { success ->
+                                        if (success) onDismiss()
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                                border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.error))
+                            ) {
+                                Text("Skjul / Fjern fra tilsyn", fontSize = 16.sp)
+                            }
+                        } else if (item.type == "henstilling") {
                             if (step == 1) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),

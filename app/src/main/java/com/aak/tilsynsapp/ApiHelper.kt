@@ -202,6 +202,177 @@ object ApiHelper {
         } catch (_: Exception) { null }
     }
 
+    data class IndmeldtCreateResult(val success: Boolean, val id: String?, val caseNumber: String?)
+
+    suspend fun createIndmeldt(
+        context: Context,
+        fullAddress: String,
+        streetName: String?,
+        latitude: Double,
+        longitude: Double,
+        title: String,
+        description: String?,
+        createdBy: String,
+        createdBySource: String = "app"
+    ): IndmeldtCreateResult = withContext(Dispatchers.IO) {
+        try {
+            val apiKey = SecurePrefs.getApiKey(context)
+                ?: return@withContext IndmeldtCreateResult(false, null, null)
+
+            val payload = mapOf(
+                "full_address" to fullAddress,
+                "street_name" to streetName,
+                "latitude" to latitude,
+                "longitude" to longitude,
+                "title" to title,
+                "description" to description,
+                "created_by" to createdBy,
+                "created_by_source" to createdBySource,
+            )
+            val body = gson.toJson(payload).toRequestBody("application/json".toMediaType())
+            val request = Request.Builder()
+                .url("${getBaseUrl()}tilsyn/indmeldt")
+                .post(body)
+                .addHeader("X-API-Key", apiKey)
+                .addHeader("Content-Type", "application/json")
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.e("ApiHelper", "createIndmeldt error: ${response.code}")
+                    return@withContext IndmeldtCreateResult(false, null, null)
+                }
+                val map: Map<String, Any> = gson.fromJson(
+                    response.body.string(),
+                    object : TypeToken<Map<String, Any>>() {}.type
+                )
+                IndmeldtCreateResult(true, map["id"] as? String, map["case_number"] as? String)
+            }
+        } catch (e: Exception) {
+            Log.e("ApiHelper", "createIndmeldt exception: ${e.message}")
+            IndmeldtCreateResult(false, null, null)
+        }
+    }
+
+    data class DawaSuggestion(
+        val label: String,
+        val streetName: String?,
+        val fullAddress: String,
+        val latitude: Double,
+        val longitude: Double,
+    )
+
+    private const val DAWA_BASE = "https://api.dataforsyningen.dk"
+    private const val AARHUS_KOMMUNEKODE = "0751"
+
+    // Dedicated DAWA client: force HTTP/1.1 (some Android stacks hit issues with
+    // HTTP/2 gzip handling against DAWA) and let OkHttp transparently decompress.
+    private val dawaClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .protocols(listOf(okhttp3.Protocol.HTTP_1_1))
+            .build()
+    }
+
+    private fun dawaRequest(url: String): Request =
+        Request.Builder()
+            .url(url)
+            .get()
+            .addHeader("User-Agent", "TilsynsApp-Android/${BuildConfig.VERSION_NAME}")
+            .addHeader("Accept", "application/json")
+            .addHeader("Accept-Encoding", "identity") // disable gzip so we always see raw JSON
+            .build()
+
+    private fun readBodyOrNull(response: okhttp3.Response): String? {
+        return try {
+            val bytes = response.body.bytes()
+            if (bytes.isEmpty()) null else bytes.toString(Charsets.UTF_8)
+        } catch (e: Exception) {
+            Log.e("ApiHelper", "readBody failed: ${e.message}")
+            null
+        }
+    }
+
+    suspend fun dawaAutocomplete(query: String): List<DawaSuggestion> = withContext(Dispatchers.IO) {
+        if (query.isBlank() || query.length < 2) return@withContext emptyList()
+        try {
+            val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+            val url = "$DAWA_BASE/adresser/autocomplete?q=$encoded&per_side=10&kommunekode=$AARHUS_KOMMUNEKODE"
+            dawaClient.newCall(dawaRequest(url)).execute().use { response ->
+                val text = readBodyOrNull(response)
+                Log.d("ApiHelper", "DAWA autocomplete: code=${response.code}, len=${text?.length ?: 0}")
+                if (!response.isSuccessful || text.isNullOrBlank()) return@withContext emptyList()
+                val type = object : TypeToken<List<Map<String, Any>>>() {}.type
+                val raw: List<Map<String, Any>> = gson.fromJson(text, type) ?: return@withContext emptyList()
+                raw.mapNotNull { entry ->
+                    val adresse = entry["adresse"] as? Map<*, *> ?: return@mapNotNull null
+                    val street = adresse["vejnavn"] as? String ?: return@mapNotNull null
+                    val husnr = adresse["husnr"] as? String ?: ""
+                    val postnr = adresse["postnr"] as? String ?: ""
+                    val postnrnavn = adresse["postnrnavn"] as? String ?: ""
+                    val x = (adresse["x"] as? Double) ?: return@mapNotNull null
+                    val y = (adresse["y"] as? Double) ?: return@mapNotNull null
+                    val label = entry["tekst"] as? String
+                        ?: "$street $husnr, $postnr $postnrnavn".trim()
+                    DawaSuggestion(
+                        label = label,
+                        streetName = street,
+                        fullAddress = "$street $husnr, $postnr $postnrnavn".replace("  ", " ").trim(),
+                        latitude = y,
+                        longitude = x,
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("ApiHelper", "dawaAutocomplete exception", e)
+            emptyList()
+        }
+    }
+
+    suspend fun dawaReverseGeocode(latitude: Double, longitude: Double): DawaSuggestion? = withContext(Dispatchers.IO) {
+        try {
+            // struktur=flad gives kommunekode at the top level so we can verify Aarhus.
+            val url = "$DAWA_BASE/adgangsadresser/reverse?x=$longitude&y=$latitude&struktur=flad"
+            dawaClient.newCall(dawaRequest(url)).execute().use { response ->
+                val text = readBodyOrNull(response)
+                Log.d("ApiHelper", "DAWA reverse: code=${response.code}, len=${text?.length ?: 0}")
+                if (!response.isSuccessful || text.isNullOrBlank()) return@withContext null
+                val map: Map<String, Any> = gson.fromJson(
+                    text,
+                    object : TypeToken<Map<String, Any>>() {}.type
+                ) ?: return@withContext null
+
+                // Reject addresses outside Aarhus Kommune.
+                val kommunekode = map["kommunekode"] as? String
+                if (kommunekode != AARHUS_KOMMUNEKODE) {
+                    Log.d("ApiHelper", "DAWA reverse: rejected kommunekode=$kommunekode (outside Aarhus)")
+                    return@withContext null
+                }
+
+                val street = map["vejnavn"] as? String ?: return@withContext null
+                val husnr = map["husnr"] as? String ?: ""
+                val postnr = map["postnr"] as? String ?: ""
+                val postnrnavn = map["postnrnavn"] as? String ?: ""
+                // In struktur=flad coordinates are wgs84: (etrs89koordinat_øst = x, etrs89koordinat_nord = y)
+                // but there's also wgs84koordinat_bredde/længde. Fall back to the input coords.
+                val x = (map["wgs84koordinat_længde"] as? Double) ?: longitude
+                val y = (map["wgs84koordinat_bredde"] as? Double) ?: latitude
+                val full = "$street $husnr, $postnr $postnrnavn".replace("  ", " ").trim()
+                DawaSuggestion(
+                    label = full,
+                    streetName = street,
+                    fullAddress = full,
+                    latitude = y,
+                    longitude = x,
+                )
+            }
+        } catch (e: Exception) {
+            Log.e("ApiHelper", "dawaReverseGeocode exception", e)
+            null
+        }
+    }
+
     suspend fun uploadImage(context: Context, id: String, imageBytes: ByteArray, fileName: String? = null): Boolean = withContext(Dispatchers.IO) {
         try {
             val apiKey = SecurePrefs.getApiKey(context) ?: return@withContext false

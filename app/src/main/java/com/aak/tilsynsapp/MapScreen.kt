@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Receipt
@@ -45,16 +46,20 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import org.osmdroid.config.Configuration
+import org.osmdroid.events.MapEventsReceiver
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.MapEventsOverlay
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
+import kotlinx.coroutines.launch
 
 private val MapColorNy = Color(0xFF4CAF50)
 private val MapColorFaerdig = Color(0xFF2196F3)
 private val MapColorHenstilling = Color(0xFFFF9800)
+private val MapColorIndmeldt = Color(0xFF00BCD4)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -175,27 +180,63 @@ fun MapScreen(
             }
         },
         floatingActionButton = {
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                FloatingActionButton(onClick = { 
-                    myLocationOverlay?.let {
-                        it.enableFollowLocation()
-                        if (it.myLocation != null) {
-                            mapView.controller.animateTo(it.myLocation)
-                        }
+            FloatingActionButton(onClick = {
+                myLocationOverlay?.let {
+                    it.enableFollowLocation()
+                    if (it.myLocation != null) {
+                        mapView.controller.animateTo(it.myLocation)
                     }
-                }) {
-                    Icon(Icons.Default.MyLocation, "Min position")
                 }
+            }) {
+                Icon(Icons.Default.MyLocation, "Min position")
             }
         }
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             val selectedMapItem by viewModel.selectedMapItem.collectAsState()
             var showInspectDialog by remember { mutableStateOf(false) }
+            val coroutineScope = rememberCoroutineScope()
+
+            // Indmeldt-creation state (triggered by tapping an empty point on the map)
+            var tappedLat by remember { mutableStateOf<Double?>(null) }
+            var tappedLon by remember { mutableStateOf<Double?>(null) }
+            var tappedAddress by remember { mutableStateOf<ApiHelper.DawaSuggestion?>(null) }
+            var isLoadingAddress by remember { mutableStateOf(false) }
+            var showIndmeldtFormDialog by remember { mutableStateOf(false) }
+
+            fun clearTapState() {
+                tappedLat = null
+                tappedLon = null
+                tappedAddress = null
+                showIndmeldtFormDialog = false
+            }
+
+            // Visual tap-preview marker (ID'd so the `update` marker-cleanup skips it)
+            val tapMarkerRef = remember { mutableStateOf<Marker?>(null) }
+            LaunchedEffect(tappedLat, tappedLon) {
+                tapMarkerRef.value?.let { mapView.overlays.remove(it) }
+                tapMarkerRef.value = null
+                val lat = tappedLat
+                val lon = tappedLon
+                if (lat != null && lon != null) {
+                    val m = Marker(mapView).apply {
+                        id = "tap_preview"
+                        position = GeoPoint(lat, lon)
+                        icon = getCachedMarker(MapColorIndmeldt.toArgb(), 80)
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                        // No click listener - taps on this marker fall through to map tap.
+                    }
+                    mapView.overlays.add(m)
+                    tapMarkerRef.value = m
+                }
+                mapView.invalidate()
+            }
 
             // Handle externally selected item (from Tilsyn or History)
             LaunchedEffect(selectedMapItem) {
                 selectedMapItem?.let { item ->
+                    // Clear any pending tap-to-create state when an existing item is selected.
+                    clearTapState()
                     if (item.latitude != null && item.longitude != null) {
                         val point = GeoPoint(item.latitude, item.longitude)
                         // Brug animateTo med zoom for en blødere overgang
@@ -212,6 +253,37 @@ fun MapScreen(
                 )
             }
 
+            // Tap-to-create-indmeldt: title/description dialog (shown after "Opret tilsyn" is clicked on the bottom card)
+            if (showIndmeldtFormDialog && tappedLat != null && tappedLon != null) {
+                CreateIndmeldtTapDialog(
+                    latitude = tappedLat!!,
+                    longitude = tappedLon!!,
+                    address = tappedAddress,
+                    isLoadingAddress = isLoadingAddress,
+                    onDismiss = {
+                        // Return to bottom card; user can re-open the form if they want.
+                        showIndmeldtFormDialog = false
+                    },
+                    onConfirm = { title, description ->
+                        val lat = tappedLat ?: return@CreateIndmeldtTapDialog
+                        val lon = tappedLon ?: return@CreateIndmeldtTapDialog
+                        // Use the ORIGINAL click coords, not the DAWA-snapped ones
+                        val fullAddress = tappedAddress?.fullAddress ?: "Ukendt adresse"
+                        val streetName = tappedAddress?.streetName
+                        viewModel.createIndmeldt(
+                            fullAddress = fullAddress,
+                            streetName = streetName,
+                            latitude = lat,
+                            longitude = lon,
+                            title = title,
+                            description = description,
+                        ) { success, _ ->
+                            if (success) clearTapState()
+                        }
+                    }
+                )
+            }
+
             AndroidView(
                 factory = {
                     mapView.apply {
@@ -220,7 +292,7 @@ fun MapScreen(
                         controller.setZoom(zoomLevel)
                         // Default to Aarhus C
                         controller.setCenter(GeoPoint(56.1567, 10.2108))
-                        
+
                         addMapListener(object : org.osmdroid.events.MapListener {
                             override fun onScroll(event: org.osmdroid.events.ScrollEvent?): Boolean = false
                             override fun onZoom(event: org.osmdroid.events.ZoomEvent?): Boolean {
@@ -229,6 +301,25 @@ fun MapScreen(
                                 return false
                             }
                         })
+
+                        // Tap-on-empty-point → open indmeldt dialog with reverse-geocoded address
+                        // Placed at index 0 (bottom of z-order) so markers get first chance to claim taps.
+                        val tapReceiver = object : MapEventsReceiver {
+                            override fun singleTapConfirmedHelper(p: GeoPoint): Boolean {
+                                viewModel.selectMapItem(null)
+                                tappedLat = p.latitude
+                                tappedLon = p.longitude
+                                tappedAddress = null
+                                isLoadingAddress = true
+                                coroutineScope.launch {
+                                    tappedAddress = ApiHelper.dawaReverseGeocode(p.latitude, p.longitude)
+                                    isLoadingAddress = false
+                                }
+                                return true
+                            }
+                            override fun longPressHelper(p: GeoPoint): Boolean = false
+                        }
+                        overlays.add(0, MapEventsOverlay(tapReceiver))
                     }
                 },
                 update = { view ->
@@ -249,8 +340,8 @@ fun MapScreen(
                         view.overlayManager.tilesOverlay.setColorFilter(null)
                     }
 
-                    // Fjern gamle markers
-                    view.overlays.removeAll { it is Marker }
+                    // Fjern gamle markers (men ikke tap-preview-markøren)
+                    view.overlays.removeAll { it is Marker && it.id != "tap_preview" }
 
                     // Filtrer og grupper items der har koordinater
                     val markerGroups = items.filter { it.latitude != null && it.longitude != null }
@@ -272,6 +363,7 @@ fun MapScreen(
                             
                             val color = when {
                                 item.type == "henstilling" -> MapColorHenstilling
+                                item.type == "indmeldt" -> MapColorIndmeldt
                                 item.vejmanDisplayState == "Færdig tilladelse" -> MapColorFaerdig
                                 else -> MapColorNy
                             }
@@ -310,6 +402,7 @@ fun MapScreen(
                         LegendItem(MapColorNy, "Ny")
                         LegendItem(MapColorFaerdig, "Færdig")
                         LegendItem(MapColorHenstilling, "Henstilling")
+                        LegendItem(MapColorIndmeldt, "Indmeldt")
                     }
                 }
 
@@ -352,17 +445,25 @@ fun MapScreen(
                             Text("Vejstatus: ${item.streetStatus}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                         }
 
-                        val start = tilsynFormatDateShort(item.startDate)
-                        val end = tilsynFormatDateShort(item.displayEndDate)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(start, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowForward,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp).padding(horizontal = 4.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        if (item.type == "indmeldt") {
+                            Text(
+                                "Oprettet: ${tilsynFormatDateShort(item.createdAt)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Text(end, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            val start = tilsynFormatDateShort(item.startDate)
+                            val end = tilsynFormatDateShort(item.displayEndDate)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(start, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp).padding(horizontal = 4.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(end, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                         
                         if (item.type == "henstilling") {
@@ -419,6 +520,66 @@ fun MapScreen(
                     }
                 }
             }
+
+            // Tap-to-create-indmeldt bottom card: shown after user taps an empty map point.
+            // Matches the selected-item card above, but with no navigation - just "Opret tilsyn".
+            if (tappedLat != null && tappedLon != null && selectedMapItem == null) {
+                val lat = tappedLat!!
+                val lon = tappedLon!!
+                // After loading completes, a null address means either "no match" or
+                // "outside Aarhus Kommune" (DAWA filter rejects non-0751).
+                val addressResolved = !isLoadingAddress && tappedAddress != null
+                val outsideAarhus = !isLoadingAddress && tappedAddress == null
+                Card(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 80.dp, start = 16.dp, end = 16.dp)
+                        .fillMaxWidth(),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            val headline = when {
+                                isLoadingAddress -> "Henter adresse…"
+                                addressResolved -> tappedAddress!!.fullAddress
+                                else -> "Uden for Aarhus Kommune"
+                            }
+                            Text(
+                                headline,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = if (outsideAarhus) MaterialTheme.colorScheme.error
+                                        else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(onClick = { clearTapState() }) {
+                                Icon(Icons.Default.Close, null)
+                            }
+                        }
+
+                        Text(
+                            "Koordinater: %.5f, %.5f".format(lat, lon),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Button(
+                            onClick = { showIndmeldtFormDialog = true },
+                            enabled = addressResolved,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MapColorIndmeldt,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text("Opret tilsyn")
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -435,6 +596,113 @@ fun LegendItem(color: Color, label: String) {
         )
         Text(label, style = MaterialTheme.typography.labelSmall)
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CreateIndmeldtTapDialog(
+    latitude: Double,
+    longitude: Double,
+    address: ApiHelper.DawaSuggestion?,
+    isLoadingAddress: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (title: String, description: String?) -> Unit,
+) {
+    var title by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+    var isSubmitting by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = { if (!isSubmitting) onDismiss() },
+        title = { Text("Opret indmeldt tilsyn") },
+        text = {
+            Column {
+                // Address row (read-only; filled by DAWA reverse-geocode)
+                Surface(
+                    color = MapColorIndmeldt.copy(alpha = 0.12f),
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.LocationOn, null, tint = MapColorIndmeldt)
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            if (isLoadingAddress && address == null) {
+                                Text("Henter adresse…", style = MaterialTheme.typography.bodyMedium)
+                            } else {
+                                Text(
+                                    address?.fullAddress ?: "Ukendt adresse",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                            Text(
+                                "Koordinater: %.5f, %.5f".format(latitude, longitude),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (isLoadingAddress) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { if (it.length <= TITLE_MAX_LENGTH) title = it },
+                    label = { Text("Titel") },
+                    supportingText = { Text("${title.length} / $TITLE_MAX_LENGTH") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Beskrivelse (valgfri)") },
+                    minLines = 2,
+                    maxLines = 4,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (title.isBlank()) return@Button
+                    isSubmitting = true
+                    onConfirm(title.trim(), description.trim().ifBlank { null })
+                },
+                enabled = !isSubmitting && title.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(containerColor = MapColorIndmeldt, contentColor = Color.White)
+            ) {
+                if (isSubmitting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White
+                    )
+                } else {
+                    Text("Opret")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isSubmitting) {
+                Text("Annullér")
+            }
+        }
+    )
 }
 
 fun createDotMarker(context: Context, color: Int, size: Int = 48): Drawable {

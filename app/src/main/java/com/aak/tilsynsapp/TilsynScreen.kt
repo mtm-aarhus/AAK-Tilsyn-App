@@ -6,11 +6,14 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Receipt
@@ -53,15 +56,16 @@ fun TilsynScreen(
     viewModel: TilsynViewModel,
     onNavigateToRegelrytteren: () -> Unit,
     onNavigateToHistory: () -> Unit,
-    onNavigateToMap: () -> Unit
+    onNavigateToMap: () -> Unit,
+    onNavigateToCreateIndmeldt: () -> Unit
 ) {
     val items by viewModel.tilsynItems.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val loading by viewModel.loadingStatus.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
-    
-    val filterOptions = listOf("Henstilling", "Ny tilladelse", "Færdig tilladelse")
+
+    val filterOptions = listOf("Henstilling", "Ny till.", "Færdig till.", "Indmeldt")
     var selectedFilters by remember { mutableStateOf(filterOptions.toSet()) }
 
     LaunchedEffect(Unit) {
@@ -86,8 +90,9 @@ fun TilsynScreen(
             
             val itemType = when {
                 item.type == "henstilling" -> "Henstilling"
-                item.vejmanDisplayState == "Færdig tilladelse" -> "Færdig tilladelse"
-                else -> "Ny tilladelse"
+                item.type == "indmeldt" -> "Indmeldt"
+                item.vejmanDisplayState == "Færdig tilladelse" -> "Færdig till."
+                else -> "Ny till."
             }
             val matchesType = itemType in selectedFilters
             
@@ -125,6 +130,15 @@ fun TilsynScreen(
                     label = { Text("RegelRytteren") }
                 )
             }
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = onNavigateToCreateIndmeldt,
+                containerColor = Color(0xFF00BCD4),
+                contentColor = Color.White
+            ) {
+                Icon(Icons.Default.Add, "Opret indmeldt tilsyn")
+            }
         }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding)) {
@@ -141,6 +155,7 @@ fun TilsynScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -220,6 +235,7 @@ fun TilsynCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: ()
 
     val typeColor = when {
         item.type == "henstilling" -> Color(0xFFFF9800) // Orange
+        item.type == "indmeldt" -> Color(0xFF00BCD4) // Cyan
         item.vejmanDisplayState == "Færdig tilladelse" -> Color(0xFF2196F3) // Blue
         else -> Color(0xFF4CAF50) // Green
     }
@@ -231,8 +247,18 @@ fun TilsynCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: ()
         Column(modifier = Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(item.displayEquipment, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(item.displaySecondaryInfo, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                    Text(
+                        item.displayEquipment,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    // For 'indmeldt' the secondary line would be the creator's initials;
+                    // we hide it here so the row stays clean - initials are visible when expanded.
+                    if (item.type != "indmeldt") {
+                        Text(item.displaySecondaryInfo, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                    }
                     Text(item.displayStreet, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Surface(
@@ -251,8 +277,13 @@ fun TilsynCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: ()
             }
 
             Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                val endLabel = if (item.type == "henstilling") "Sidst registreret opstillet" else "Slutter"
-                Text("$endLabel: ${tilsynFormatDateShort(item.displayEndDate)}", style = MaterialTheme.typography.bodyMedium)
+                val endLabel = when (item.type) {
+                    "henstilling" -> "Sidst registreret opstillet"
+                    "indmeldt" -> "Oprettet"
+                    else -> "Slutter"
+                }
+                val endValue = if (item.type == "indmeldt") item.createdAt else item.displayEndDate
+                Text("$endLabel: ${tilsynFormatDateShort(endValue)}", style = MaterialTheme.typography.bodyMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     IconButton(onClick = {
                         viewModel.selectMapItem(item)
