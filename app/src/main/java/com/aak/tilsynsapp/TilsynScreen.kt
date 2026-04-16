@@ -1,7 +1,5 @@
 package com.aak.tilsynsapp
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -30,7 +28,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.net.toUri
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -222,7 +219,7 @@ fun TilsynScreen(
 fun TilsynCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     var showInspectDialog by remember { mutableStateOf(false) }
-    @Suppress("UNUSED_VARIABLE")
+    @Suppress("UNUSED_VARIABLE", "unused")
     val context = LocalContext.current
 
     if (showInspectDialog) {
