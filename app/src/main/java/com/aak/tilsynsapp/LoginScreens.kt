@@ -12,7 +12,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
 @Composable
@@ -29,6 +28,13 @@ fun LoginScreen(viewModel: TilsynViewModel) {
         AlertDialog(
             onDismissRequest = {},
             confirmButton = {
+                TextButton(onClick = {
+                    (activity as? MainActivity)?.triggerUpdate()
+                }) {
+                    Text("Opdater nu")
+                }
+            },
+            dismissButton = {
                 TextButton(onClick = {
                     activity?.finishAffinity()
                 }) {

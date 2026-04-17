@@ -1,5 +1,5 @@
 @file:Suppress("ReplaceIsEmptyWithIfEmpty", "ReplaceIsEmptyWithIfEmpty",
-    "ReplaceIsEmptyWithIfEmpty"
+    "ReplaceIsEmptyWithIfEmpty", "RedundantSuppression"
 )
 
 package com.aak.tilsynsapp

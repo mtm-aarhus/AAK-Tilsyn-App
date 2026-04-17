@@ -3,8 +3,10 @@ package com.aak.tilsynsapp
 import androidx.compose.runtime.*
 import com.aak.tilsynsapp.ui.theme.TilsynsAppTheme
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -17,6 +19,15 @@ import java.util.logging.Logger
 
 class MainActivity : ComponentActivity() {
     private val viewModel: TilsynViewModel by viewModels()
+
+    private lateinit var appUpdater: AppUpdater
+    private val updateLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode != RESULT_OK) {
+            Log.w("AppUpdater", "Update flow did not complete (resultCode=${result.resultCode})")
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,7 +50,8 @@ class MainActivity : ComponentActivity() {
 
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = !isDarkTheme
 
-
+        appUpdater = AppUpdater(this)
+        appUpdater.checkForUpdate(updateLauncher)
 
         setContent {
             TilsynsAppTheme {
@@ -53,11 +65,20 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (::appUpdater.isInitialized) {
+            appUpdater.resumeIfInProgress(updateLauncher)
+        }
         if (firstResume) {
             firstResume = false
             return
         }
         viewModel.refreshDataAsync()
+    }
+
+    fun triggerUpdate() {
+        if (::appUpdater.isInitialized) {
+            appUpdater.checkForUpdate(updateLauncher)
+        }
     }
 
 }

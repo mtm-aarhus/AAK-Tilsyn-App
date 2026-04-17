@@ -1,3 +1,5 @@
+@file:Suppress("CascadeIf", "CascadeIf", "RedundantSuppression")
+
 package com.aak.tilsynsapp
 
 import android.Manifest
@@ -8,7 +10,6 @@ import androidx.core.graphics.scale
 import android.graphics.ImageDecoder
 import android.net.Uri
 import android.os.Build
-import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
