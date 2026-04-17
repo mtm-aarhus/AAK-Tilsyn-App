@@ -36,6 +36,7 @@ data class TilsynItem(
     @SerializedName("street_status") val streetStatus: String? = null,
     @SerializedName("initials") val initials: String? = null,
     @SerializedName("connected_case") val connectedCase: String? = null,
+    @SerializedName("sharepoint_link") val sharepointLink: String? = null,
 
     // Henstilling specific (VejmanKassen)
     @SerializedName("HenstillingId") val henstillingId: String? = null,

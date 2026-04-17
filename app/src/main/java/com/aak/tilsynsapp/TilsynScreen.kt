@@ -13,11 +13,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Search
+import android.content.Intent
 import androidx.compose.material3.*
+import androidx.core.net.toUri
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
@@ -219,7 +222,7 @@ fun TilsynScreen(
 fun TilsynCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     var showInspectDialog by remember { mutableStateOf(false) }
-    @Suppress("UNUSED_VARIABLE", "unused")
+    @Suppress("UNUSED_VARIABLE", "unused", "RedundantSuppression")
     val context = LocalContext.current
 
     if (showInspectDialog) {
@@ -281,7 +284,15 @@ fun TilsynCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: ()
                 }
                 val endValue = if (item.type == "indmeldt") item.createdAt else item.displayEndDate
                 Text("$endLabel: ${tilsynFormatDateShort(endValue)}", style = MaterialTheme.typography.bodyMedium)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (!item.sharepointLink.isNullOrBlank()) {
+                        val spContext = LocalContext.current
+                        IconButton(onClick = {
+                            spContext.startActivity(Intent(Intent.ACTION_VIEW, item.sharepointLink.toUri()))
+                        }, modifier = Modifier.size(48.dp)) {
+                            Icon(Icons.Default.FolderOpen, "Filer", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                        }
+                    }
                     IconButton(onClick = {
                         viewModel.selectMapItem(item)
                         onNavigateToMap()
@@ -289,7 +300,7 @@ fun TilsynCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: ()
                         Icon(Icons.Default.Map, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
                     }
                     IconButton(onClick = { showInspectDialog = true }, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(32.dp))
+                        Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
                     }
                 }
             }

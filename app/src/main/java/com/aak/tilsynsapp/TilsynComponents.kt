@@ -45,8 +45,7 @@ fun TilsynExpandedDetails(item: TilsynItem) {
             TilsynDetailRow("Tilladelsestype", prettyType(item.tilladelsestype))
             TilsynDetailRow("Areal", if (item.kvadratmeter != null) "${item.kvadratmeter} m²" else null)
             TilsynDetailRow("Start", tilsynFormatDate(item.startDate))
-            val slutLabel = if (item.fakturaStatus == "Ny") "Sidst set" else "Slut"
-            TilsynDetailRow(slutLabel, tilsynFormatDate(item.endDate))
+            TilsynDetailRow("Sidst set", tilsynFormatDate(item.endDate))
         }
 
         // Unified History Section

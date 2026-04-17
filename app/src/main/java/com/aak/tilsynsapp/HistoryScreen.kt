@@ -1,3 +1,5 @@
+@file:Suppress("RedundantSuppression", "RedundantSuppression")
+
 package com.aak.tilsynsapp
 
 import androidx.compose.animation.AnimatedVisibility
@@ -11,11 +13,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.automirrored.filled.Send
+import android.content.Intent
 import androidx.compose.material3.*
+import androidx.core.net.toUri
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
@@ -34,7 +40,7 @@ fun HistoryScreen(
     viewModel: TilsynViewModel,
     onNavigateToTilsyn: () -> Unit,
     onNavigateToRegelrytteren: () -> Unit,
-    onNavigateToHistory: () -> Unit,
+    @Suppress("UNUSED_PARAMETER", "unused") onNavigateToHistory: () -> Unit,
     onNavigateToMap: () -> Unit
 ) {
     val items by viewModel.historyItems.collectAsState()
@@ -185,6 +191,8 @@ fun HistoryScreen(
 fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     var showInspectDialog by remember { mutableStateOf(false) }
+    var showConfirmFortryd by remember { mutableStateOf(false) }
+    var showConfirmUnhide by remember { mutableStateOf(false) }
     @Suppress("UNUSED_VARIABLE")
     val context = LocalContext.current
     @Suppress("UNUSED_VARIABLE")
@@ -198,12 +206,57 @@ fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: (
         )
     }
 
+    // Confirmation: Fortryd fakturering
+    if (showConfirmFortryd) {
+        AlertDialog(
+            onDismissRequest = { showConfirmFortryd = false },
+            title = { Text("Fortryd fakturering") },
+            text = { Text("Er du sikker på at du vil fortryde faktureringen for denne henstilling?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showConfirmFortryd = false
+                    coroutineScope.launch {
+                        viewModel.updateRow(context, item, "Ny", "Fortrød fakturering")
+                    }
+                }) { Text("Ja, fortryd") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirmFortryd = false }) { Text("Annullér") }
+            }
+        )
+    }
+
+    // Confirmation: Unhide
+    if (showConfirmUnhide) {
+        AlertDialog(
+            onDismissRequest = { showConfirmUnhide = false },
+            title = { Text("Gendan tilsyn") },
+            text = { Text("Er du sikker på at du vil gendanne dette tilsyn, så det vises igen?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showConfirmUnhide = false
+                    if (item.type == "henstilling") {
+                        coroutineScope.launch { viewModel.updateRow(context, item, "Ny") }
+                    } else {
+                        viewModel.toggleHidePermission(item.id, false) { }
+                    }
+                }) { Text("Ja, gendan") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirmUnhide = false }) { Text("Annullér") }
+            }
+        )
+    }
+
     val typeColor = when {
         item.type == "henstilling" -> Color(0xFFFF9800) // Orange
         item.type == "indmeldt" -> Color(0xFF00BCD4) // Cyan
         item.vejmanDisplayState == "Færdig tilladelse" -> Color(0xFF2196F3) // Blue
         else -> Color(0xFF4CAF50) // Green
     }
+
+    val isFaktureret = item.type == "henstilling" &&
+        (item.fakturaStatus == "Faktureret" || item.fakturaStatus == "Til fakturering")
 
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).clickable { expanded = !expanded },
@@ -219,8 +272,6 @@ fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: (
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
-                    // For 'indmeldt' we show the title here instead of the creator's initials;
-                    // initials are visible when expanded.
                     val secondary = if (item.type == "indmeldt") item.title.orEmpty() else item.displaySecondaryInfo
                     if (secondary.isNotBlank()) {
                         Text(
@@ -246,35 +297,54 @@ fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: (
             }
 
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp), 
-                horizontalArrangement = Arrangement.SpaceBetween, 
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val endLabel = if (item.type == "indmeldt") "Oprettet" else "Sluttede"
+                val endLabel = when (item.type) {
+                    "indmeldt" -> "Oprettet"
+                    "henstilling" -> "Sidst set"
+                    else -> "Sluttede"
+                }
                 val endValue = if (item.type == "indmeldt") item.createdAt else item.displayEndDate
                 Text("$endLabel: ${tilsynFormatDate(endValue)}", style = MaterialTheme.typography.bodySmall)
-                
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { 
+
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (!item.sharepointLink.isNullOrBlank()) {
+                        val spContext = LocalContext.current
+                        IconButton(onClick = {
+                            spContext.startActivity(Intent(Intent.ACTION_VIEW, item.sharepointLink.toUri()))
+                        }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Default.FolderOpen, "Filer", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                        }
+                    }
+
+                    IconButton(onClick = {
                         viewModel.selectMapItem(item)
                         onNavigateToMap()
                     }, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Default.Map, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                     }
 
-                    IconButton(onClick = { showInspectDialog = true }, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(28.dp))
+                    if (isFaktureret) {
+                        // Faktureret: show a "sent" icon instead of inspect checkmark
+                        Icon(
+                            Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "Sendt til Vejmankassen",
+                            tint = Color(0xFF4CAF50),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    } else {
+                        IconButton(onClick = { showInspectDialog = true }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(28.dp))
+                        }
                     }
-                    
+
                     if (item.type == "henstilling") {
                         val status = item.fakturaStatus
                         if (status == "Til fakturering") {
                             TextButton(
-                                onClick = {
-                                    coroutineScope.launch {
-                                        viewModel.updateRow(context, item, "Ny", "Fortrød fakturering")
-                                    }
-                                },
+                                onClick = { showConfirmFortryd = true },
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
                             ) {
                                 Icon(Icons.AutoMirrored.Filled.Undo, null, modifier = Modifier.size(16.dp))
@@ -282,13 +352,9 @@ fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: (
                                 Text("Fortryd fakturering", fontSize = 12.sp)
                             }
                         } else if (item.hidden == true) {
-                            IconButton(onClick = {
-                                coroutineScope.launch {
-                                    viewModel.updateRow(context, item, "Ny")
-                                }
-                            }, modifier = Modifier.size(32.dp)) {
+                            IconButton(onClick = { showConfirmUnhide = true }, modifier = Modifier.size(32.dp)) {
                                 Icon(
-                                    Icons.AutoMirrored.Filled.Undo, 
+                                    Icons.AutoMirrored.Filled.Undo,
                                     contentDescription = "Gendan (Vis)",
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(24.dp)
@@ -296,9 +362,7 @@ fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: (
                             }
                         }
                     } else if (item.hidden == true) {
-                        IconButton(onClick = {
-                            viewModel.toggleHidePermission(item.id, false) { }
-                        }, modifier = Modifier.size(32.dp)) {
+                        IconButton(onClick = { showConfirmUnhide = true }, modifier = Modifier.size(32.dp)) {
                             Icon(
                                 Icons.AutoMirrored.Filled.Undo,
                                 contentDescription = "Gendan (Vis)",

@@ -27,9 +27,11 @@ class RegelRytterenViewModel(application: Application) : AndroidViewModel(applic
 
     private val _vejman = MutableStateFlow(true)
     private val _henstillinger = MutableStateFlow(true)
+    private val _indmeldte = MutableStateFlow(true)
 
     val vejman: StateFlow<Boolean> = _vejman
     val henstillinger: StateFlow<Boolean> = _henstillinger
+    val indmeldte: StateFlow<Boolean> = _indmeldte
 
     private val _isSubmitting = MutableStateFlow(false)
     val isSubmitting: StateFlow<Boolean> = _isSubmitting
@@ -59,6 +61,7 @@ class RegelRytterenViewModel(application: Application) : AndroidViewModel(applic
 
     fun setVejman(value: Boolean) { _vejman.value = value }
     fun setHenstillinger(value: Boolean) { _henstillinger.value = value }
+    fun setIndmeldte(value: Boolean) { _indmeldte.value = value }
 
     fun clearStatusMessage() {
         _statusMessage.value = null
@@ -73,8 +76,8 @@ class RegelRytterenViewModel(application: Application) : AndroidViewModel(applic
             return
         }
         
-        if (!_vejman.value && !_henstillinger.value) {
-            _statusMessage.value = "Vælg mindst én type: Tilladelser eller Henstillinger"
+        if (!_vejman.value && !_henstillinger.value && !_indmeldte.value) {
+            _statusMessage.value = "Vælg mindst én type"
             return
         }
 
@@ -90,7 +93,8 @@ class RegelRytterenViewModel(application: Application) : AndroidViewModel(applic
                 context = context,
                 inspectors = inspectorData,
                 vejman = _vejman.value,
-                henstillinger = _henstillinger.value
+                henstillinger = _henstillinger.value,
+                indmeldte = _indmeldte.value
             )
             _statusMessage.value = result
             _isSubmitting.value = false

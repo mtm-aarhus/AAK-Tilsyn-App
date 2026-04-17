@@ -6,7 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.DirectionsBike
+import androidx.compose.material.icons.automirrored.filled.DirectionsBike
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Receipt
@@ -35,6 +35,7 @@ fun RegelRytterenScreen(
     val inspectors by viewModel.inspectors.collectAsState()
     val vejman by viewModel.vejman.collectAsState()
     val henstillinger by viewModel.henstillinger.collectAsState()
+    val indmeldte by viewModel.indmeldte.collectAsState()
     val isSubmitting by viewModel.isSubmitting.collectAsState()
     val successLockout by viewModel.successLockout.collectAsState()
     val countdown by viewModel.countdown.collectAsState()
@@ -135,6 +136,10 @@ fun RegelRytterenScreen(
                     Text("Henstillinger", style = MaterialTheme.typography.labelMedium)
                     Switch(checked = henstillinger, onCheckedChange = { viewModel.setHenstillinger(it) })
                 }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Indmeldte", style = MaterialTheme.typography.labelMedium)
+                    Switch(checked = indmeldte, onCheckedChange = { viewModel.setIndmeldte(it) })
+                }
             }
 
             if (isSubmitting) {
@@ -189,7 +194,7 @@ fun InspectorItem(
         ) {
             VehicleToggle(
                 selected = inspector.vehicle == "Cykel",
-                icon = Icons.Default.DirectionsBike,
+                icon = Icons.AutoMirrored.Filled.DirectionsBike,
                 onClick = { onVehicleChange("Cykel") },
                 enabled = inspector.isIncluded
             )

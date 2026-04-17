@@ -22,6 +22,7 @@ object ApiHelper {
         .writeTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
         .build()
 
+    @Suppress("SameReturnValue")
     private fun getBaseUrl(): String {
         return BuildConfig.API_URL
     }
@@ -128,20 +129,22 @@ object ApiHelper {
     }
 
     suspend fun sendRegelrytterenPayload(
-        context: Context, 
-        inspectors: List<Map<String, String>>, 
-        vejman: Boolean, 
-        henstillinger: Boolean
+        context: Context,
+        inspectors: List<Map<String, String>>,
+        vejman: Boolean,
+        henstillinger: Boolean,
+        indmeldte: Boolean
     ): String = withContext(Dispatchers.IO) {
         try {
             val apiKey = SecurePrefs.getApiKey(context) ?: return@withContext "Ingen API-nøgle fundet"
             val payload = mapOf(
-                "queue_name" to "RegelRytteren", 
-                "status" to "NEW", 
+                "queue_name" to "RegelRytteren",
+                "status" to "NEW",
                 "data" to mapOf(
-                    "inspectors" to inspectors, 
-                    "vejman" to vejman, 
-                    "henstillinger" to henstillinger
+                    "inspectors" to inspectors,
+                    "vejman" to vejman,
+                    "henstillinger" to henstillinger,
+                    "indmeldte" to indmeldte
                 )
             )
             val requestBody = gson.toJson(payload).toRequestBody("application/json".toMediaType())

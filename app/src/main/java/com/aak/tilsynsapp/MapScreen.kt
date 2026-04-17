@@ -1,18 +1,18 @@
+@file:Suppress("ReplaceIsEmptyWithIfEmpty", "ReplaceIsEmptyWithIfEmpty",
+    "ReplaceIsEmptyWithIfEmpty"
+)
+
 package com.aak.tilsynsapp
 
 import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
-import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
-import android.net.Uri
-import android.preference.PreferenceManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material3.*
@@ -40,9 +41,12 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.drawable.toDrawable
+import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import org.osmdroid.config.Configuration
@@ -408,8 +412,8 @@ fun MapScreen(
 
                 FloatingActionButton(
                     onClick = { 
-                        isDarkMode = !isDarkMode 
-                        sharedPrefs.edit().putBoolean("map_dark_mode", isDarkMode).apply()
+                        isDarkMode = !isDarkMode
+                        sharedPrefs.edit { putBoolean("map_dark_mode", isDarkMode) }
                     },
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     modifier = Modifier.size(48.dp),
@@ -500,14 +504,27 @@ fun MapScreen(
 
                             Spacer(modifier = Modifier.width(16.dp))
 
+                            if (!item.sharepointLink.isNullOrBlank()) {
+                                FilledIconButton(
+                                    onClick = {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, item.sharepointLink.toUri()))
+                                    },
+                                    modifier = Modifier.size(48.dp)
+                                ) {
+                                    Icon(Icons.Default.FolderOpen, "Filer", modifier = Modifier.size(24.dp))
+                                }
+
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+
                             FilledIconButton(
                                 onClick = {
                                     val uri = if (item.latitude != null && item.longitude != null) {
                                         "https://www.google.com/maps/dir/?api=1&destination=${item.latitude},${item.longitude}&travelmode=bicycling"
                                     } else {
-                                        "https://www.google.com/maps/dir/?api=1&destination=${Uri.encode(item.displayStreet + ", Aarhus")}&travelmode=bicycling"
+                                        "https://www.google.com/maps/dir/?api=1&destination=${java.net.URLEncoder.encode(item.displayStreet + ", Aarhus", "UTF-8")}&travelmode=bicycling"
                                     }
-                                    val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse(uri)).apply {
+                                    val mapIntent = Intent(Intent.ACTION_VIEW, uri.toUri()).apply {
                                         setPackage("com.google.android.apps.maps")
                                     }
                                     context.startActivity(mapIntent)
@@ -706,12 +723,12 @@ private fun CreateIndmeldtTapDialog(
 }
 
 fun createDotMarker(context: Context, color: Int, size: Int = 48): Drawable {
-    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val bitmap = createBitmap(size, size)
     val canvas = Canvas(bitmap)
     val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     paint.color = android.graphics.Color.WHITE
     canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
     paint.color = color
     canvas.drawCircle(size / 2f, size / 2f, size / 2.5f, paint)
-    return BitmapDrawable(context.resources, bitmap)
+    return bitmap.toDrawable(context.resources)
 }
