@@ -195,6 +195,33 @@ object ApiHelper {
         } catch (_: Exception) { null }
     }
 
+    suspend fun registerFcmToken(context: Context, fcmToken: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val apiKey = SecurePrefs.getApiKey(context) ?: return@withContext false
+            val email = SecurePrefs.getEmail(context) ?: return@withContext false
+            if (email.isBlank() || fcmToken.isBlank()) return@withContext false
+
+            val payload = mapOf("email" to email, "fcm_token" to fcmToken)
+            val body = gson.toJson(payload).toRequestBody("application/json".toMediaType())
+            val request = Request.Builder()
+                .url("${getBaseUrl()}tilsyn/register-token")
+                .post(body)
+                .addHeader("X-API-Key", apiKey)
+                .addHeader("Content-Type", "application/json")
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.e("ApiHelper", "registerFcmToken error: ${response.code}")
+                }
+                response.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.e("ApiHelper", "registerFcmToken exception: ${e.message}")
+            false
+        }
+    }
+
     suspend fun fetchVersionInfo(): Map<String, Any>? = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder().url("${getBaseUrl()}tilsynapp/version").get().build()

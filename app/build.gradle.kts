@@ -2,6 +2,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    // Requires app/google-services.json — download from Firebase Console.
+    alias(libs.plugins.google.services)
 }
 
 android {
@@ -76,6 +78,10 @@ dependencies {
 
     // Google Play In-App Updates
     implementation(libs.app.update)
+
+    // Firebase Cloud Messaging (push notifications)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
 
     // Testing
     testImplementation(libs.junit)

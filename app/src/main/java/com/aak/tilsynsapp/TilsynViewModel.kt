@@ -5,6 +5,8 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.android.gms.tasks.OnCompleteListener
+import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,6 +49,41 @@ class TilsynViewModel(application: Application) : AndroidViewModel(application) 
         _selectedMapItem.value = item
     }
 
+    private val _pendingDeepLinkItemId = MutableStateFlow<String?>(null)
+    val pendingDeepLinkItemId: StateFlow<String?> = _pendingDeepLinkItemId
+
+    fun requestOpenItemOnMap(itemId: String?) {
+        if (itemId.isNullOrBlank()) return
+        _pendingDeepLinkItemId.value = itemId
+    }
+
+    fun consumePendingDeepLink(): String? {
+        val id = _pendingDeepLinkItemId.value
+        _pendingDeepLinkItemId.value = null
+        return id
+    }
+
+    fun findItemById(id: String): TilsynItem? {
+        return _tilsynItems.value.firstOrNull { it.id == id }
+            ?: _historyItems.value.firstOrNull { it.id == id }
+    }
+
+    fun registerFcmTokenAsync() {
+        val context = getApplication<Application>()
+        FirebaseMessaging.getInstance().token.addOnCompleteListener(
+            OnCompleteListener { task ->
+                if (!task.isSuccessful) {
+                    Log.w("TilsynFcm", "Fetch FCM token failed", task.exception)
+                    return@OnCompleteListener
+                }
+                val token = task.result ?: return@OnCompleteListener
+                viewModelScope.launch(Dispatchers.IO) {
+                    ApiHelper.registerFcmToken(context, token)
+                }
+            }
+        )
+    }
+
     init {
         viewModelScope.launch {
             val context = getApplication<Application>()
@@ -68,6 +105,7 @@ class TilsynViewModel(application: Application) : AndroidViewModel(application) 
             val savedKey = SecurePrefs.getApiKey(context)
             if (!savedKey.isNullOrBlank() && !SecurePrefs.isLoginExpired(context)) {
                 _loginState.value = TilsynLoginState.LoggedIn
+                registerFcmTokenAsync()
             } else {
                 SecurePrefs.clearAll(context)
                 _loginState.value = TilsynLoginState.Input
@@ -253,6 +291,7 @@ class TilsynViewModel(application: Application) : AndroidViewModel(application) 
                 if (!email.isNullOrBlank()) SecurePrefs.saveEmail(context, email)
                 SecurePrefs.saveLoginTimestamp(context)
                 _loginState.value = TilsynLoginState.LoggedIn
+                registerFcmTokenAsync()
                 onResult(true)
             } else {
                 onResult(false)
