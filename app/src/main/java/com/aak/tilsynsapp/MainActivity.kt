@@ -12,9 +12,25 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -124,6 +140,7 @@ fun AppRoot(viewModel: TilsynViewModel) {
     val loginState by viewModel.loginState.collectAsState()
     val pendingDeepLinkItemId by viewModel.pendingDeepLinkItemId.collectAsState()
     var currentScreen by remember { mutableStateOf("Tilsyn") }
+    var deepLinkResolving by remember { mutableStateOf(false) }
 
     LaunchedEffect(loginState, pendingDeepLinkItemId) {
         val pending = pendingDeepLinkItemId
@@ -131,13 +148,15 @@ fun AppRoot(viewModel: TilsynViewModel) {
             currentScreen = "Map"
             var item = viewModel.findItemById(pending)
             if (item == null) {
+                deepLinkResolving = true
                 viewModel.refreshDataAsync()
-                // Wait briefly for items to load before resolving by id.
-                repeat(20) {
+                var attempts = 0
+                while (item == null && attempts < 20) {
                     delay(250)
                     item = viewModel.findItemById(pending)
-                    if (item != null) return@repeat
+                    attempts++
                 }
+                deepLinkResolving = false
             }
             item?.let { viewModel.selectMapItem(it) }
             viewModel.consumePendingDeepLink()
@@ -145,43 +164,76 @@ fun AppRoot(viewModel: TilsynViewModel) {
     }
 
     TilsynsAppTheme {
-        when (loginState) {
-            is TilsynLoginState.LoggedIn -> {
-                when (currentScreen) {
-                    "Tilsyn" -> TilsynScreen(
-                        viewModel = viewModel,
-                        onNavigateToRegelrytteren = { currentScreen = "RegelRytteren" },
-                        onNavigateToHistory = { currentScreen = "History" },
-                        onNavigateToMap = { currentScreen = "Map" },
-                        onNavigateToCreateIndmeldt = { currentScreen = "CreateIndmeldt" }
-                    )
-                    "RegelRytteren" -> RegelRytterenScreen(
-                        onNavigateToTilsyn = { currentScreen = "Tilsyn" },
-                        onNavigateToHistory = { currentScreen = "History" },
-                        onNavigateToMap = { currentScreen = "Map" }
-                    )
-                    "History" -> HistoryScreen(
-                        viewModel = viewModel,
-                        onNavigateToTilsyn = { currentScreen = "Tilsyn" },
-                        onNavigateToRegelrytteren = { currentScreen = "RegelRytteren" },
-                        onNavigateToHistory = { currentScreen = "History" },
-                        onNavigateToMap = { currentScreen = "Map" }
-                    )
-                    "Map" -> MapScreen(
-                        viewModel = viewModel,
-                        onNavigateToTilsyn = { currentScreen = "Tilsyn" },
-                        onNavigateToRegelrytteren = { currentScreen = "RegelRytteren" },
-                        onNavigateToHistory = { currentScreen = "History" },
-                        onNavigateToMap = { currentScreen = "Map" }
-                    )
-                    "CreateIndmeldt" -> CreateIndmeldtScreen(
-                        viewModel = viewModel,
-                        onBack = { currentScreen = "Tilsyn" },
-                        onCreated = { currentScreen = "Tilsyn" }
-                    )
+        Box(modifier = Modifier.fillMaxSize()) {
+            when (loginState) {
+                is TilsynLoginState.LoggedIn -> {
+                    when (currentScreen) {
+                        "Tilsyn" -> TilsynScreen(
+                            viewModel = viewModel,
+                            onNavigateToRegelrytteren = { currentScreen = "RegelRytteren" },
+                            onNavigateToHistory = { currentScreen = "History" },
+                            onNavigateToMap = { currentScreen = "Map" },
+                            onNavigateToCreateIndmeldt = { currentScreen = "CreateIndmeldt" }
+                        )
+                        "RegelRytteren" -> RegelRytterenScreen(
+                            onNavigateToTilsyn = { currentScreen = "Tilsyn" },
+                            onNavigateToHistory = { currentScreen = "History" },
+                            onNavigateToMap = { currentScreen = "Map" }
+                        )
+                        "History" -> HistoryScreen(
+                            viewModel = viewModel,
+                            onNavigateToTilsyn = { currentScreen = "Tilsyn" },
+                            onNavigateToRegelrytteren = { currentScreen = "RegelRytteren" },
+                            onNavigateToHistory = { currentScreen = "History" },
+                            onNavigateToMap = { currentScreen = "Map" }
+                        )
+                        "Map" -> MapScreen(
+                            viewModel = viewModel,
+                            onNavigateToTilsyn = { currentScreen = "Tilsyn" },
+                            onNavigateToRegelrytteren = { currentScreen = "RegelRytteren" },
+                            onNavigateToHistory = { currentScreen = "History" },
+                            onNavigateToMap = { currentScreen = "Map" }
+                        )
+                        "CreateIndmeldt" -> CreateIndmeldtScreen(
+                            viewModel = viewModel,
+                            onBack = { currentScreen = "Tilsyn" },
+                            onCreated = { currentScreen = "Tilsyn" }
+                        )
+                    }
                 }
+                else -> LoginScreen(viewModel)
             }
-            else -> LoginScreen(viewModel)
+
+            if (deepLinkResolving) {
+                DeepLinkLoader()
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeepLinkLoader() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.4f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = 4.dp,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
+            ) {
+                CircularProgressIndicator(
+                    strokeWidth = 3.dp,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(Modifier.width(16.dp))
+                Text("Henter indmelding…")
+            }
         }
     }
 }
