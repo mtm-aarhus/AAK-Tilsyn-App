@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.NearMe
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -75,8 +76,13 @@ fun MapScreen(
     onNavigateToMap: () -> Unit
 ) {
     val items by viewModel.tilsynItems.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
     val context = LocalContext.current
     val mapView = remember { MapView(context) }
+
+    LaunchedEffect(Unit) {
+        viewModel.refreshDataAsync()
+    }
     
     val sharedPrefs = remember { context.getSharedPreferences("${context.packageName}_preferences", Context.MODE_PRIVATE) }
     var isDarkMode by remember { mutableStateOf(sharedPrefs.getBoolean("map_dark_mode", false)) }
@@ -158,16 +164,16 @@ fun MapScreen(
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(
-                    selected = false,
-                    onClick = onNavigateToTilsyn,
-                    icon = { Icon(Icons.Default.Receipt, contentDescription = "Tilsyn") },
-                    label = { Text("Tilsyn") }
-                )
-                NavigationBarItem(
                     selected = true,
                     onClick = onNavigateToMap,
                     icon = { Icon(Icons.Default.Map, contentDescription = "Kort") },
                     label = { Text("Kort") }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = onNavigateToTilsyn,
+                    icon = { Icon(Icons.Default.Receipt, contentDescription = "Tilsyn") },
+                    label = { Text("Tilsyn") }
                 )
                 NavigationBarItem(
                     selected = false,
@@ -332,14 +338,30 @@ fun MapScreen(
                     val markerSize = (40 + (currentZoom - 14).coerceAtLeast(0.0) * 12).toInt().coerceIn(40, 110)
 
                     if (isDarkMode) {
-                        val matrix = ColorMatrix()
-                        matrix.set(floatArrayOf(
-                            -0.85f, 0f, 0f, 0f, 255f,
-                            0f, -0.85f, 0f, 0f, 255f,
-                            0f, 0f, -0.85f, 0f, 255f,
+                        // Invert lysstyrke, men roter hue 180° så grønne områder forbliver grønne
+                        // og blåt vand forbliver blåt — i stedet for negativ-effektens magenta/orange.
+                        val invert = ColorMatrix(floatArrayOf(
+                            -1f, 0f, 0f, 0f, 255f,
+                            0f, -1f, 0f, 0f, 255f,
+                            0f, 0f, -1f, 0f, 255f,
                             0f, 0f, 0f, 1f, 0f
                         ))
-                        view.overlayManager.tilesOverlay.setColorFilter(ColorMatrixColorFilter(matrix))
+                        val hueRotate180 = ColorMatrix(floatArrayOf(
+                            -0.574f,  1.430f,  0.144f, 0f, 0f,
+                             0.426f,  0.430f,  0.144f, 0f, 0f,
+                             0.426f,  1.430f, -0.856f, 0f, 0f,
+                             0f,      0f,      0f,     1f, 0f
+                        ))
+                        invert.postConcat(hueRotate180)
+                        // Lidt afdæmpet kontrast så ren hvid bliver mørk grå i stedet for sort.
+                        val softenContrast = ColorMatrix(floatArrayOf(
+                            0.85f, 0f, 0f, 0f, 15f,
+                            0f, 0.85f, 0f, 0f, 15f,
+                            0f, 0f, 0.85f, 0f, 15f,
+                            0f, 0f, 0f, 1f, 0f
+                        ))
+                        invert.postConcat(softenContrast)
+                        view.overlayManager.tilesOverlay.setColorFilter(ColorMatrixColorFilter(invert))
                     } else {
                         view.overlayManager.tilesOverlay.setColorFilter(null)
                     }
@@ -411,7 +433,7 @@ fun MapScreen(
                 }
 
                 FloatingActionButton(
-                    onClick = { 
+                    onClick = {
                         isDarkMode = !isDarkMode
                         sharedPrefs.edit { putBoolean("map_dark_mode", isDarkMode) }
                     },
@@ -424,6 +446,29 @@ fun MapScreen(
                         contentDescription = "Skift tema",
                         modifier = Modifier.size(24.dp)
                     )
+                }
+
+                FloatingActionButton(
+                    onClick = {
+                        if (!isRefreshing) viewModel.refreshDataAsync()
+                    },
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    modifier = Modifier.size(48.dp),
+                    shape = CircleShape
+                ) {
+                    if (isRefreshing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.5.dp,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    } else {
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "Opdater tilsyn",
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
             }
 

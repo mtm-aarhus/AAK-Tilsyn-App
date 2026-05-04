@@ -106,16 +106,16 @@ fun TilsynScreen(
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(
-                    selected = true,
-                    onClick = {},
-                    icon = { Icon(Icons.Default.Receipt, contentDescription = "Tilsyn") },
-                    label = { Text("Tilsyn") }
-                )
-                NavigationBarItem(
                     selected = false,
                     onClick = onNavigateToMap,
                     icon = { Icon(Icons.Default.Map, contentDescription = "Kort") },
                     label = { Text("Kort") }
+                )
+                NavigationBarItem(
+                    selected = true,
+                    onClick = {},
+                    icon = { Icon(Icons.Default.Receipt, contentDescription = "Tilsyn") },
+                    label = { Text("Tilsyn") }
                 )
                 NavigationBarItem(
                     selected = false,

@@ -139,7 +139,7 @@ class MainActivity : ComponentActivity() {
 fun AppRoot(viewModel: TilsynViewModel) {
     val loginState by viewModel.loginState.collectAsState()
     val pendingDeepLinkItemId by viewModel.pendingDeepLinkItemId.collectAsState()
-    var currentScreen by remember { mutableStateOf("Tilsyn") }
+    var currentScreen by remember { mutableStateOf("Map") }
     var deepLinkResolving by remember { mutableStateOf(false) }
 
     LaunchedEffect(loginState, pendingDeepLinkItemId) {

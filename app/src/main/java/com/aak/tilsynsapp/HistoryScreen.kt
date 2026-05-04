@@ -91,15 +91,15 @@ fun HistoryScreen(
             NavigationBar {
                 NavigationBarItem(
                     selected = false,
-                    onClick = onNavigateToTilsyn,
-                    icon = { Icon(Icons.Default.Receipt, contentDescription = "Tilsyn") },
-                    label = { Text("Tilsyn") }
-                )
-                NavigationBarItem(
-                    selected = false,
                     onClick = onNavigateToMap,
                     icon = { Icon(Icons.Default.Map, contentDescription = "Kort") },
                     label = { Text("Kort") }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = onNavigateToTilsyn,
+                    icon = { Icon(Icons.Default.Receipt, contentDescription = "Tilsyn") },
+                    label = { Text("Tilsyn") }
                 )
                 NavigationBarItem(
                     selected = true,
