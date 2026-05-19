@@ -74,6 +74,20 @@ class MainActivity : ComponentActivity() {
         @Suppress("DEPRECATION")
         window.statusBarColor = android.graphics.Color.TRANSPARENT
 
+        // Stop the OS from auto-applying a translucent dark scrim behind the status bar
+        // when it decides our content lacks contrast. Without this, the scrim fades in
+        // and out as the map tile under the status bar changes colour during pan/zoom,
+        // which on OnePlus looks like a black bar flickering at the top of the map.
+        // The properties are deprecated as of recent SDKs (Google now wants apps to draw
+        // their own scrim if needed), but they still work and "no scrim" is exactly what
+        // we want for the immersive map view — suppress the deprecation.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            @Suppress("DEPRECATION")
+            window.isStatusBarContrastEnforced = false
+            @Suppress("DEPRECATION")
+            window.isNavigationBarContrastEnforced = false
+        }
+
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = !isDarkTheme
 
         appUpdater = AppUpdater(this)

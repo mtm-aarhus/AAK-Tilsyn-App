@@ -39,12 +39,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.net.toUri
@@ -87,6 +90,23 @@ fun MapScreen(
     val sharedPrefs = remember { context.getSharedPreferences("${context.packageName}_preferences", Context.MODE_PRIVATE) }
     var isDarkMode by remember { mutableStateOf(sharedPrefs.getBoolean("map_dark_mode", false)) }
     var zoomLevel by remember { mutableDoubleStateOf(15.0) }
+
+    // Match the status-bar icon colour to whatever the *map* is currently showing, since
+    // the map extends behind the status bar. Dark map → white icons; light map → black
+    // icons. When this composable leaves composition (user navigates to another screen),
+    // restore the system-theme default so the rest of the app behaves normally.
+    val view = LocalView.current
+    val isSystemDark = isSystemInDarkTheme()
+    LaunchedEffect(isDarkMode) {
+        val window = (view.context as? android.app.Activity)?.window ?: return@LaunchedEffect
+        WindowInsetsControllerCompat(window, view).isAppearanceLightStatusBars = !isDarkMode
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            val window = (view.context as? android.app.Activity)?.window ?: return@onDispose
+            WindowInsetsControllerCompat(window, view).isAppearanceLightStatusBars = !isSystemDark
+        }
+    }
 
     // Cache til markers for at undgå jank og OOM ved zoom
     val markerCache = remember { mutableMapOf<Pair<Int, Int>, Drawable>() }
@@ -202,7 +222,17 @@ fun MapScreen(
             }
         }
     ) { innerPadding ->
-        Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+        // Let the map draw all the way up under the status bar (immersive map look like
+        // Google Maps). Without this, the area above the map shows the Scaffold's
+        // background — a permanent black band whose boundary becomes visible/invisible
+        // depending on whether the top of the map view is dark or light content,
+        // looking like flickering as you pan.
+        // Only the bottom inset is kept so the bottom navigation bar doesn't cover map.
+        Box(
+            modifier = Modifier
+                .padding(bottom = innerPadding.calculateBottomPadding())
+                .fillMaxSize()
+        ) {
             val selectedMapItem by viewModel.selectedMapItem.collectAsState()
             var showInspectDialog by remember { mutableStateOf(false) }
             val coroutineScope = rememberCoroutineScope()
@@ -411,10 +441,13 @@ fun MapScreen(
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Legend & Dark Mode Toggle
+            // Legend & Dark Mode Toggle — push below the status bar so the controls don't
+            // sit behind battery/clock icons. (The map itself intentionally extends behind
+            // the status bar.)
             Column(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
+                    .windowInsetsPadding(WindowInsets.statusBars)
                     .padding(16.dp),
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
