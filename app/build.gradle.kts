@@ -18,8 +18,8 @@ android {
         applicationId = "com.aak.tilsynsapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 13
-        versionName = "2.4"
+        versionCode = 14
+        versionName = "2.5"
         buildConfigField("String", "API_URL", "\"https://pyorchestrator.aarhuskommune.dk/api/\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -38,6 +38,22 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+    }
+
+    lint {
+        // "ForegroundServicePermission" complains "Android 14+ requires Foreground Service
+        // types declaration and justification." The type IS declared
+        // (foregroundServiceType="dataSync" on UploadService); the "justification" part is
+        // a Play Console policy answer the lint can't see, so it always warns. The use
+        // case is documented in the AndroidManifest.xml comment block above the
+        // foreground-service permissions — that's the text we'll paste into Play Console.
+        disable += "ForegroundServicePermission"
+
+        // "OldTargetApi" treats every installed SDK as "the latest", including previews.
+        // We intentionally stay on the latest *stable* targetSdk (36 / Android 16) and
+        // will bump it deliberately when a new stable ships and we've smoke-tested it —
+        // not because Android Studio's SDK manager downloaded a beta.
+        disable += "OldTargetApi"
     }
 }
 
