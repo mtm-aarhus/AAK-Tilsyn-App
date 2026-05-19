@@ -10,6 +10,16 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+        Foreground service to keep image uploads running while the inspector locks the phone
+        or switches apps during field work. dataSync is the appropriate type for this use
+        case per the Android 14+ classification: we sync user-generated content (inspection
+        photos) to the backend, prompted explicitly by the user, with a persistent
+        notification and Cancel action while the work runs.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"
+        tools:ignore="ForegroundServicesPolicy" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <application
         android:allowBackup="true"
@@ -51,6 +61,11 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+
+        <service
+            android:name=".UploadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"

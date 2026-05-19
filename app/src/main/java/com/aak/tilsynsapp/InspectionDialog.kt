@@ -10,6 +10,7 @@ import androidx.core.graphics.scale
 import android.graphics.ImageDecoder
 import android.net.Uri
 import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -43,7 +44,12 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.text.SimpleDateFormat
@@ -135,6 +141,29 @@ fun InspectionDialog(
     val context = LocalContext.current
     var photoUri by remember { mutableStateOf<Uri?>(null) }
 
+    // Igangværende submit-job. Bruges til at vise spinner, blokere dobbeltklik, og
+    // give brugeren et "Annullér"-knap der reelt afbryder netværkskaldet via OkHttp.
+    var submitJob by remember { mutableStateOf<Job?>(null) }
+    val submitting = submitJob != null
+    // Tekst under spinneren — fx "Uploader 2 af 5 billeder…" mens vi behandler queue'en.
+    var submitProgress by remember { mutableStateOf<String?>(null) }
+    // Annullér-knappen vises kun mens vi er i en fase hvor cancel er meningsfuldt.
+    // Når permission-flow'et har gemt serveren og er ved at sætte uploads i kø,
+    // sætter vi denne til false så brugeren ikke ender med et delvist annulleret resultat.
+    var submitCancellable by remember { mutableStateOf(true) }
+
+    fun blockedByOffline(): Boolean {
+        if (!ApiHelper.hasInternet(context)) {
+            Toast.makeText(context, "Ingen internetforbindelse — prøv igen", Toast.LENGTH_LONG).show()
+            return true
+        }
+        return false
+    }
+
+    fun showSubmitFailed() {
+        Toast.makeText(context, "Kunne ikke gemme tilsyn — prøv igen", Toast.LENGTH_LONG).show()
+    }
+
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         if (success) {
             photoUri?.let { uri ->
@@ -167,6 +196,36 @@ fun InspectionDialog(
     }
 
     val coroutineScope = rememberCoroutineScope()
+
+    /**
+     * Wraps a submit action: blocks double-fire, runs the suspend `work` on the dialog's
+     * scope, tracks the Job so a Cancel button can abort it, and cleans up state in
+     * a `finally` so spinners always come down. The lambda's Boolean return decides
+     * whether to dismiss (true) or surface the generic failure toast (false). The lambda
+     * can also call `onDismiss()` / show its own toast and return null to mean
+     * "I handled the outcome".
+     */
+    fun runSubmission(work: suspend () -> Boolean?) {
+        if (submitting) return
+        if (blockedByOffline()) return
+        submitCancellable = true
+        submitJob = coroutineScope.launch {
+            try {
+                when (work()) {
+                    true -> onDismiss()
+                    false -> showSubmitFailed()
+                    null -> { /* lambda handled the outcome itself */ }
+                }
+            } catch (_: CancellationException) {
+                // User pressed "Annullér" — leave the dialog open with the user's data.
+                Toast.makeText(context, "Annulleret", Toast.LENGTH_SHORT).show()
+            } finally {
+                submitJob = null
+                submitProgress = null
+                submitCancellable = true
+            }
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -207,7 +266,10 @@ fun InspectionDialog(
     }
 
     Dialog(
-        onDismissRequest = onDismiss,
+        // Mens vi indsender, undertryk dismiss via tilbage-knap/tap-udenfor — så vi ikke
+        // mister tilsynet i vinduet mellem "inspect succeeded" og "uploads enqueued".
+        // Brugeren kan stadig annullere eksplicit via "Annullér"-knappen.
+        onDismissRequest = { if (!submitting) onDismiss() },
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Surface(
@@ -222,6 +284,7 @@ fun InspectionDialog(
             Box(modifier = Modifier.fillMaxSize()) {
                 IconButton(
                     onClick = onDismiss,
+                    enabled = !submitting,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(8.dp)
@@ -482,21 +545,31 @@ fun InspectionDialog(
                         if (item.type == "indmeldt") {
                             Button(
                                 onClick = {
-                                    viewModel.inspectIndmeldt(item.id, comment) { success ->
-                                        if (success) onDismiss()
+                                    runSubmission {
+                                        viewModel.inspectIndmeldtAwait(item.id, comment)
                                     }
                                 },
+                                enabled = !submitting,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Gem tilsyn", fontSize = 18.sp)
+                                if (submitting) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                } else {
+                                    Text("Gem tilsyn", fontSize = 18.sp)
+                                }
                             }
 
                             OutlinedButton(
                                 onClick = {
-                                    viewModel.hidePermission(item.id) { success ->
-                                        if (success) onDismiss()
+                                    runSubmission {
+                                        viewModel.hidePermissionAwait(item.id)
                                     }
                                 },
+                                enabled = !submitting,
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                                 border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.error))
@@ -511,25 +584,33 @@ fun InspectionDialog(
                                 ) {
                                     Button(
                                         onClick = {
-                                            coroutineScope.launch {
+                                            runSubmission {
                                                 val updated = item.copy(
                                                     kvadratmeter = m2Value.replace(",", ".").toFloatOrNull(),
                                                     endDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
                                                 )
                                                 viewModel.updateRow(context, updated, "Ny", comment)
-                                                onDismiss()
                                             }
                                         },
+                                        enabled = !submitting,
                                         modifier = Modifier.weight(1f),
                                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                                         contentPadding = PaddingValues(horizontal = 4.dp)
                                     ) {
-                                        Text(if (item.fakturaStatus == "Til fakturering" || item.fakturaStatus == "Faktureret") "Genåbn" else "Stadig opstillet", fontSize = 15.sp, maxLines = 1)
+                                        if (submitting) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(18.dp),
+                                                strokeWidth = 2.dp,
+                                                color = MaterialTheme.colorScheme.onPrimary
+                                            )
+                                        } else {
+                                            Text(if (item.fakturaStatus == "Til fakturering" || item.fakturaStatus == "Faktureret") "Genåbn" else "Stadig opstillet", fontSize = 15.sp, maxLines = 1)
+                                        }
                                     }
-                                    
+
                                     Button(
                                         onClick = { step = 2 },
-                                        enabled = m2Value.isNotBlank() && isKvadratmeterValid,
+                                        enabled = !submitting && m2Value.isNotBlank() && isKvadratmeterValid,
                                         modifier = Modifier.weight(1f),
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50), contentColor = Color.White),
                                         contentPadding = PaddingValues(horizontal = 4.dp)
@@ -548,11 +629,11 @@ fun InspectionDialog(
                                 
                                 OutlinedButton(
                                     onClick = {
-                                        coroutineScope.launch {
+                                        runSubmission {
                                             viewModel.updateRow(context, item, "Fakturer ikke", comment)
-                                            onDismiss()
                                         }
                                     },
+                                    enabled = !submitting,
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                                     border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.error))
@@ -570,63 +651,128 @@ fun InspectionDialog(
                             } else {
                                 Button(
                                     onClick = {
-                                        coroutineScope.launch {
+                                        runSubmission {
                                             val updated = item.copy(
                                                 kvadratmeter = m2Value.replace(",", ".").toFloatOrNull(),
                                                 endDate = manualSlutDate
                                             )
                                             viewModel.updateRow(context, updated, "Til fakturering", comment)
-                                            onDismiss()
                                         }
                                     },
-                                    enabled = m2Value.isNotBlank() && isKvadratmeterValid && manualSlutDate.isNotBlank(),
+                                    enabled = !submitting && m2Value.isNotBlank() && isKvadratmeterValid && manualSlutDate.isNotBlank(),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Text("Send til fakturering", fontSize = 18.sp)
+                                    if (submitting) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(20.dp),
+                                            strokeWidth = 2.dp,
+                                            color = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    } else {
+                                        Text("Send til fakturering", fontSize = 18.sp)
+                                    }
                                 }
-                                TextButton(onClick = { step = 1 }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                                TextButton(onClick = { step = 1 }, enabled = !submitting, modifier = Modifier.align(Alignment.CenterHorizontally)) {
                                     Text("Tilbage", fontSize = 18.sp)
                                 }
                             }
                         } else {
                             Button(
                                 onClick = {
-                                    viewModel.inspectPermission(item.id, comment, selection) { success ->
-                                        if (success && capturedBitmaps.isNotEmpty()) {
-                                            val email = SecurePrefs.getEmail(context) ?: "Unknown"
-                                            val initials = email.substringBefore("@").uppercase()
-                                            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-                                            var uploadsRemaining = capturedBitmaps.size
+                                    runSubmission {
+                                        submitProgress = "Gemmer tilsyn…"
+                                        val inspectOk = viewModel.inspectPermissionAwait(item.id, comment, selection)
+                                        if (!inspectOk) return@runSubmission false
 
-                                            capturedBitmaps.forEachIndexed { index, bitmap ->
-                                                val processedBytes = processImageForUpload(bitmap)
-                                                val fileName = "Tilsyn_${initials}_${timeStamp}_${index + 1}.jpg"
-                                                viewModel.uploadImage(item.id, processedBytes, fileName) {
-                                                    uploadsRemaining--
-                                                    if (uploadsRemaining == 0) onDismiss()
+                                        if (capturedBitmaps.isEmpty()) {
+                                            return@runSubmission true
+                                        }
+
+                                        // Tilsynet er nu gemt server-side. Fra dette punkt giver
+                                        // det ikke mening at annullere — vi ville bare efterlade
+                                        // billeder som forældreløse filer i cache. Gem-til-disk +
+                                        // service-enqueue i en NonCancellable blok.
+                                        submitCancellable = false
+                                        submitProgress = "Forbereder ${capturedBitmaps.size} billede(r)…"
+                                        val email = SecurePrefs.getEmail(context) ?: "Unknown"
+                                        val initials = email.substringBefore("@").uppercase()
+                                        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+
+                                        withContext(NonCancellable) {
+                                            val savedPaths = withContext(Dispatchers.IO) {
+                                                val cacheRoot = File(context.cacheDir, "uploads").apply { mkdirs() }
+                                                capturedBitmaps.mapIndexed { index, bitmap ->
+                                                    val bytes = processImageForUpload(bitmap)
+                                                    val outFile = File(cacheRoot, "Tilsyn_${initials}_${timeStamp}_${index + 1}.jpg")
+                                                    outFile.outputStream().use { it.write(bytes) }
+                                                    outFile.absolutePath
                                                 }
                                             }
-                                        } else {
-                                            if (success) onDismiss()
+
+                                            UploadService.enqueueUploads(
+                                                context = context.applicationContext,
+                                                itemId = item.id,
+                                                label = item.displayStreet,
+                                                filePaths = savedPaths,
+                                            )
                                         }
+
+                                        Toast.makeText(
+                                            context,
+                                            "Tilsyn gemt — billeder uploades i baggrunden",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                        onDismiss()
+                                        null // Vi har selv håndteret afslutningen.
                                     }
                                 },
+                                enabled = !submitting,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Gem tilsyn", fontSize = 18.sp)
+                                if (submitting) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                } else {
+                                    Text("Gem tilsyn", fontSize = 18.sp)
+                                }
                             }
 
                             OutlinedButton(
                                 onClick = {
-                                    viewModel.hidePermission(item.id) { success ->
-                                        if (success) onDismiss()
+                                    runSubmission {
+                                        viewModel.hidePermissionAwait(item.id)
                                     }
                                 },
+                                enabled = !submitting,
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                                 border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.error))
                             ) {
                                 Text("Skjul / Fjern fra tilsyn", fontSize = 16.sp)
+                            }
+                        }
+
+                        // Progress-tekst + Annullér: ét sted, ikke per knap, så vi ikke har
+                        // 5 forskellige kopier af samme UI for alle submit-flows.
+                        if (submitting) {
+                            submitProgress?.let { msg ->
+                                Text(
+                                    msg,
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                )
+                            }
+                            if (submitCancellable) {
+                                TextButton(
+                                    onClick = { submitJob?.cancel() },
+                                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                                ) {
+                                    Text("Annullér", color = MaterialTheme.colorScheme.error)
+                                }
                             }
                         }
                     }

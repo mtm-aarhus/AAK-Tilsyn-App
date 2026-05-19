@@ -135,14 +135,17 @@ class TilsynViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun inspectPermission(
+    // ---- Suspend versions used by the inspection dialog so it can drive its own
+    //      coroutine scope and support cancellation. The fire-and-forget callback
+    //      variants below delegate to these. ----
+
+    suspend fun inspectPermissionAwait(
         id: String,
         comment: String,
-        selection: String? = null,
-        onResult: (Boolean) -> Unit
-    ) {
-        viewModelScope.launch {
-            _loadingStatus.value = "Gemmer tilsyn..."
+        selection: String? = null
+    ): Boolean {
+        _loadingStatus.value = "Gemmer tilsyn..."
+        return try {
             val success = ApiHelper.unifiedInspect(
                 context = getApplication(),
                 id = id,
@@ -150,17 +153,49 @@ class TilsynViewModel(application: Application) : AndroidViewModel(application) 
                 comment = comment,
                 selection = selection
             )
-            if (success) {
-                refreshDataAsync()
-            }
+            if (success) refreshDataAsync()
+            success
+        } finally {
             _loadingStatus.value = null
-            onResult(success)
         }
     }
 
-    fun toggleHidePermission(id: String, hide: Boolean, onResult: (Boolean) -> Unit) {
-        viewModelScope.launch {
-            _loadingStatus.value = if (hide) "Skjuler..." else "Gendannet..."
+    suspend fun inspectIndmeldtAwait(id: String, comment: String): Boolean {
+        _loadingStatus.value = "Gemmer tilsyn..."
+        return try {
+            val success = ApiHelper.unifiedInspect(
+                context = getApplication(),
+                id = id,
+                type = "indmeldt",
+                comment = comment
+            )
+            if (success) refreshDataAsync()
+            success
+        } finally {
+            _loadingStatus.value = null
+        }
+    }
+
+    suspend fun hidePermissionAwait(id: String): Boolean {
+        _loadingStatus.value = "Skjuler..."
+        return try {
+            val success = ApiHelper.unifiedInspect(
+                context = getApplication(),
+                id = id,
+                type = "permission",
+                comment = "Skjult fra tilsyn",
+                updates = mapOf("hidden" to true)
+            )
+            if (success) refreshDataAsync()
+            success
+        } finally {
+            _loadingStatus.value = null
+        }
+    }
+
+    suspend fun toggleHidePermissionAwait(id: String, hide: Boolean): Boolean {
+        _loadingStatus.value = if (hide) "Skjuler..." else "Gendanner..."
+        return try {
             val success = ApiHelper.unifiedInspect(
                 context = getApplication(),
                 id = id,
@@ -168,47 +203,23 @@ class TilsynViewModel(application: Application) : AndroidViewModel(application) 
                 comment = if (hide) "Skjult fra tilsyn" else "Gendannet fra historik",
                 updates = mapOf("hidden" to hide)
             )
-            if (success) {
-                refreshDataAsync()
-            }
+            if (success) refreshDataAsync()
+            success
+        } finally {
             _loadingStatus.value = null
-            onResult(success)
         }
     }
 
-    fun hidePermission(id: String, onResult: (Boolean) -> Unit) {
-        toggleHidePermission(id, true, onResult)
-    }
-
-    fun inspectIndmeldt(id: String, comment: String, onResult: (Boolean) -> Unit) {
-        viewModelScope.launch {
-            _loadingStatus.value = "Gemmer tilsyn..."
-            // Server looks up item_type from Cosmos, so the payload 'type' is only for logging.
-            val success = ApiHelper.unifiedInspect(
-                context = getApplication(),
-                id = id,
-                type = "indmeldt",
-                comment = comment
-            )
-            if (success) {
-                refreshDataAsync()
-            }
-            _loadingStatus.value = null
-            onResult(success)
-        }
-    }
-
-    fun createIndmeldt(
+    suspend fun createIndmeldtAwait(
         fullAddress: String,
         streetName: String?,
         latitude: Double,
         longitude: Double,
         title: String,
         description: String?,
-        onResult: (Boolean, String?) -> Unit
-    ) {
-        viewModelScope.launch {
-            _loadingStatus.value = "Opretter indmeldt tilsyn..."
+    ): ApiHelper.IndmeldtCreateResult {
+        _loadingStatus.value = "Opretter indmeldt tilsyn..."
+        return try {
             val context = getApplication<Application>()
             val email = SecurePrefs.getEmail(context) ?: ""
             val initials = email.substringBefore("@").uppercase().ifBlank { "UNKNOWN" }
@@ -224,18 +235,25 @@ class TilsynViewModel(application: Application) : AndroidViewModel(application) 
                 createdBy = initials,
                 createdBySource = "app",
             )
-            if (result.success) {
-                refreshDataAsync()
-            }
+            if (result.success) refreshDataAsync()
+            result
+        } finally {
             _loadingStatus.value = null
-            onResult(result.success, result.caseNumber)
         }
     }
 
-    fun uploadImage(id: String, imageBytes: ByteArray, fileName: String? = null, onResult: (Boolean) -> Unit) {
+    fun createIndmeldt(
+        fullAddress: String,
+        streetName: String?,
+        latitude: Double,
+        longitude: Double,
+        title: String,
+        description: String?,
+        onResult: (Boolean, String?) -> Unit
+    ) {
         viewModelScope.launch {
-            val success = ApiHelper.uploadImage(getApplication(), id, imageBytes, fileName)
-            onResult(success)
+            val result = createIndmeldtAwait(fullAddress, streetName, latitude, longitude, title, description)
+            onResult(result.success, result.caseNumber)
         }
     }
 

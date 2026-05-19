@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.automirrored.filled.Send
 import android.content.Intent
+import android.widget.Toast
 import androidx.compose.material3.*
 import androidx.core.net.toUri
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -193,10 +194,30 @@ fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: (
     var showInspectDialog by remember { mutableStateOf(false) }
     var showConfirmFortryd by remember { mutableStateOf(false) }
     var showConfirmUnhide by remember { mutableStateOf(false) }
-    @Suppress("UNUSED_VARIABLE")
     val context = LocalContext.current
-    @Suppress("UNUSED_VARIABLE")
     val coroutineScope = rememberCoroutineScope()
+
+    // Lock for the card's action icons (Fortryd / Gendan). Prevents double-submission
+    // and gives Toast feedback for offline / server failures — matching the pattern
+    // used in InspectionDialog and CreateIndmeldtScreen.
+    var submitting by remember { mutableStateOf(false) }
+
+    fun runUpdate(work: suspend () -> Boolean) {
+        if (submitting) return
+        if (!ApiHelper.hasInternet(context)) {
+            Toast.makeText(context, "Ingen internetforbindelse — prøv igen", Toast.LENGTH_LONG).show()
+            return
+        }
+        submitting = true
+        coroutineScope.launch {
+            try {
+                val ok = work()
+                if (!ok) Toast.makeText(context, "Kunne ikke gemme — prøv igen", Toast.LENGTH_LONG).show()
+            } finally {
+                submitting = false
+            }
+        }
+    }
 
     if (showInspectDialog) {
         InspectionDialog(
@@ -215,7 +236,7 @@ fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: (
             confirmButton = {
                 TextButton(onClick = {
                     showConfirmFortryd = false
-                    coroutineScope.launch {
+                    runUpdate {
                         viewModel.updateRow(context, item, "Ny", "Fortrød fakturering")
                     }
                 }) { Text("Ja, fortryd") }
@@ -236,9 +257,9 @@ fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: (
                 TextButton(onClick = {
                     showConfirmUnhide = false
                     if (item.type == "henstilling") {
-                        coroutineScope.launch { viewModel.updateRow(context, item, "Ny") }
+                        runUpdate { viewModel.updateRow(context, item, "Ny") }
                     } else {
-                        viewModel.toggleHidePermission(item.id, false) { }
+                        runUpdate { viewModel.toggleHidePermissionAwait(item.id, false) }
                     }
                 }) { Text("Ja, gendan") }
             },
@@ -335,7 +356,11 @@ fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: (
                             modifier = Modifier.size(24.dp)
                         )
                     } else {
-                        IconButton(onClick = { showInspectDialog = true }, modifier = Modifier.size(32.dp)) {
+                        IconButton(
+                            onClick = { showInspectDialog = true },
+                            enabled = !submitting,
+                            modifier = Modifier.size(32.dp),
+                        ) {
                             Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(28.dp))
                         }
                     }
@@ -345,14 +370,55 @@ fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: (
                         if (status == "Til fakturering") {
                             TextButton(
                                 onClick = { showConfirmFortryd = true },
+                                enabled = !submitting,
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
                             ) {
-                                Icon(Icons.AutoMirrored.Filled.Undo, null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Fortryd fakturering", fontSize = 12.sp)
+                                if (submitting) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(14.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Arbejder…", fontSize = 12.sp)
+                                } else {
+                                    Icon(Icons.AutoMirrored.Filled.Undo, null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Fortryd fakturering", fontSize = 12.sp)
+                                }
                             }
                         } else if (item.hidden == true) {
-                            IconButton(onClick = { showConfirmUnhide = true }, modifier = Modifier.size(32.dp)) {
+                            IconButton(
+                                onClick = { showConfirmUnhide = true },
+                                enabled = !submitting,
+                                modifier = Modifier.size(32.dp),
+                            ) {
+                                if (submitting) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Undo,
+                                        contentDescription = "Gendan (Vis)",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            }
+                        }
+                    } else if (item.hidden == true) {
+                        IconButton(
+                            onClick = { showConfirmUnhide = true },
+                            enabled = !submitting,
+                            modifier = Modifier.size(32.dp),
+                        ) {
+                            if (submitting) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                            } else {
                                 Icon(
                                     Icons.AutoMirrored.Filled.Undo,
                                     contentDescription = "Gendan (Vis)",
@@ -360,15 +426,6 @@ fun HistoryCard(item: TilsynItem, viewModel: TilsynViewModel, onNavigateToMap: (
                                     modifier = Modifier.size(24.dp)
                                 )
                             }
-                        }
-                    } else if (item.hidden == true) {
-                        IconButton(onClick = { showConfirmUnhide = true }, modifier = Modifier.size(32.dp)) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.Undo,
-                                contentDescription = "Gendan (Vis)",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(24.dp)
-                            )
                         }
                     }
                 }

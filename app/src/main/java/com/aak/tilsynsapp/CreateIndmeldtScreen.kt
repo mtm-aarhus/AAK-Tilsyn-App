@@ -15,9 +15,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -35,6 +38,7 @@ fun CreateIndmeldtScreen(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
 
     // Intercept system back (button + gesture) so we return to the Tilsyn screen
     // instead of letting the Activity handle it (which would close the app since
@@ -48,7 +52,8 @@ fun CreateIndmeldtScreen(
     var isSearching by remember { mutableStateOf(false) }
 
     var selected by remember { mutableStateOf<ApiHelper.DawaSuggestion?>(null) }
-    var isSubmitting by remember { mutableStateOf(false) }
+    var submitJob by remember { mutableStateOf<Job?>(null) }
+    val isSubmitting = submitJob != null
 
     // Debounced live autocomplete
     LaunchedEffect(searchQuery) {
@@ -207,22 +212,32 @@ fun CreateIndmeldtScreen(
             Button(
                 onClick = {
                     val s = selected ?: return@Button
-                    isSubmitting = true
-                    viewModel.createIndmeldt(
-                        fullAddress = s.fullAddress,
-                        streetName = s.streetName,
-                        latitude = s.latitude,
-                        longitude = s.longitude,
-                        title = title.trim(),
-                        description = description.trim().ifBlank { null },
-                    ) { success, _ ->
-                        isSubmitting = false
-                        if (success) {
-                            onCreated()
-                        } else {
-                            coroutineScope.launch {
-                                snackbarHostState.showSnackbar("Kunne ikke oprette tilsyn")
+                    if (isSubmitting) return@Button
+                    if (!ApiHelper.hasInternet(context)) {
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar("Ingen internetforbindelse — prøv igen")
+                        }
+                        return@Button
+                    }
+                    submitJob = coroutineScope.launch {
+                        try {
+                            val result = viewModel.createIndmeldtAwait(
+                                fullAddress = s.fullAddress,
+                                streetName = s.streetName,
+                                latitude = s.latitude,
+                                longitude = s.longitude,
+                                title = title.trim(),
+                                description = description.trim().ifBlank { null },
+                            )
+                            if (result.success) {
+                                onCreated()
+                            } else {
+                                snackbarHostState.showSnackbar("Kunne ikke oprette tilsyn — prøv igen")
                             }
+                        } catch (_: CancellationException) {
+                            snackbarHostState.showSnackbar("Annulleret")
+                        } finally {
+                            submitJob = null
                         }
                     }
                 },
@@ -240,6 +255,14 @@ fun CreateIndmeldtScreen(
                     )
                 } else {
                     Text("Opret tilsyn", fontSize = 18.sp)
+                }
+            }
+            if (isSubmitting) {
+                TextButton(
+                    onClick = { submitJob?.cancel() },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Annullér", color = MaterialTheme.colorScheme.error)
                 }
             }
         }

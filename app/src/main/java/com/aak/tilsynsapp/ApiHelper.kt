@@ -1,26 +1,72 @@
 package com.aak.tilsynsapp
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 object ApiHelper {
     private val gson = Gson()
+    // OkHttp's read/write timeouts are *idle* timeouts (max gap between bytes), not a
+    // wall-clock cap. As long as bytes are flowing the connection stays open, which is
+    // what we want for slow field connections — the user can press "Annullér" if it's
+    // actually stuck. Connect is short for fast offline detection.
     private val client = OkHttpClient.Builder()
-        .connectTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
+        .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
         .writeTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
         .build()
+
+    /**
+     * Suspend wrapper around an OkHttp Call that respects coroutine cancellation.
+     * When the surrounding coroutine is cancelled, the underlying HTTP call is also
+     * cancelled — so the server doesn't keep processing a request the user just aborted.
+     */
+    private suspend fun Call.awaitResponse(): Response = suspendCancellableCoroutine { cont ->
+        cont.invokeOnCancellation {
+            try { this.cancel() } catch (_: Throwable) {}
+        }
+        enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                if (!cont.isCancelled) cont.resumeWithException(e)
+            }
+            override fun onResponse(call: Call, response: Response) {
+                cont.resume(response)
+            }
+        })
+    }
+
+    /**
+     * Returns true if the device currently has an active network with internet capability.
+     * Used for fast offline detection before launching a request — UI can show a clear
+     * "no connection" message instead of waiting for OkHttp's DNS lookup to fail.
+     */
+    fun hasInternet(context: Context): Boolean {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return true // ConnectivityManager unavailable — assume online, let the request try
+        val network = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(network) ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
 
     @Suppress("SameReturnValue")
     private fun getBaseUrl(): String {
@@ -117,11 +163,14 @@ object ApiHelper {
                 .addHeader("Content-Type", "application/json")
                 .build()
 
-            client.newCall(request).execute().use { response ->
+            client.newCall(request).awaitResponse().use { response ->
                 val responseBody = response.body.string()
                 Log.d("ApiHelper", "unifiedInspect Response (${response.code}): $responseBody")
                 return@withContext response.isSuccessful
             }
+        } catch (e: CancellationException) {
+            // User cancelled — let cancellation propagate so the caller can react.
+            throw e
         } catch (e: Exception) {
             Log.e("ApiHelper", "Unified inspect error: ${e.message}", e)
             return@withContext false
@@ -267,7 +316,7 @@ object ApiHelper {
                 .addHeader("Content-Type", "application/json")
                 .build()
 
-            client.newCall(request).execute().use { response ->
+            client.newCall(request).awaitResponse().use { response ->
                 if (!response.isSuccessful) {
                     Log.e("ApiHelper", "createIndmeldt error: ${response.code}")
                     return@withContext IndmeldtCreateResult(false, null, null)
@@ -278,6 +327,8 @@ object ApiHelper {
                 )
                 IndmeldtCreateResult(true, map["id"] as? String, map["case_number"] as? String)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("ApiHelper", "createIndmeldt exception: ${e.message}")
             IndmeldtCreateResult(false, null, null)
@@ -314,7 +365,7 @@ object ApiHelper {
             .addHeader("Accept-Encoding", "identity") // disable gzip so we always see raw JSON
             .build()
 
-    private fun readBodyOrNull(response: okhttp3.Response): String? {
+    private fun readBodyOrNull(response: Response): String? {
         return try {
             val bytes = response.body.bytes()
             if (bytes.isEmpty()) null else bytes.toString(Charsets.UTF_8)
@@ -424,7 +475,9 @@ object ApiHelper {
                 .addHeader("X-API-Key", apiKey)
                 .build()
 
-            client.newCall(request).execute().use { it.isSuccessful }
+            client.newCall(request).awaitResponse().use { it.isSuccessful }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("ApiHelper", "Image upload failed: ${e.message}")
             false
