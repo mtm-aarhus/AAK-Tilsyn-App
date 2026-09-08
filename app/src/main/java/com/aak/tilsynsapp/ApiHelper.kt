@@ -34,8 +34,8 @@ object ApiHelper {
         .writeTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
         .build()
 
-    // Dedicated KDS client: Force HTTP/1.1 to avoid "source exhausted prematurely"
-    // and other protocol issues known with Dataforsyningen's infrastructure.
+    // Dedicated KDS client: Force HTTP/1.1 to avoid protocol stability issues
+    // on Dataforsyningen's older infrastructure (fixes "source exhausted prematurely").
     private val kdsClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
@@ -282,7 +282,7 @@ object ApiHelper {
     suspend fun addressAutocomplete(context: Context, query: String): List<AddressSuggestion> = withContext(Dispatchers.IO) {
         if (query.isBlank() || query.length < 2) return@withContext emptyList()
         try {
-            val token = SecurePrefs.getKdsToken(context) ?: "adressevaelger123"
+            val token = SecurePrefs.getKdsToken(context) ?: BuildConfig.DATA_FORSYNINGEN_TOKEN
             val encoded = java.net.URLEncoder.encode(query, "UTF-8")
             val url = "https://api.dataforsyningen.dk/adresser/autocomplete?q=$encoded&per_side=20&kommunekode=$AARHUS_KOMMUNEKODE&token=$token"
             
@@ -299,22 +299,37 @@ object ApiHelper {
                 Log.d("ApiHelper", "Autocomplete raw: $text")
                 if (!response.isSuccessful || text.isBlank()) return@withContext emptyList()
                 
-                // The log shows a raw JSON array: [ { "tekst": "...", "adresse": { ... } }, ... ]
-                val listType = object : TypeToken<List<Map<String, Any>>>() {}.type
-                val raw: List<Map<String, Any>> = gson.fromJson(text, listType) ?: return@withContext emptyList()
+                // Extremely robust parsing to handle both [ { ... } ] and { "value": [ { ... } ] }
+                val raw: List<Map<String, Any>> = if (text.trim().startsWith("[")) {
+                    val listType = object : TypeToken<List<Map<String, Any>>>() {}.type
+                    gson.fromJson(text, listType)
+                } else {
+                    val mapType = object : TypeToken<Map<String, Any>>() {}.type
+                    val root: Map<String, Any> = gson.fromJson(text, mapType)
+                    root["value"] as? List<Map<String, Any>> ?: emptyList()
+                }
                 
                 raw.mapNotNull { entry ->
                     val adresse = entry["adresse"] as? Map<*, *> ?: return@mapNotNull null
                     val street = adresse["vejnavn"] as? String ?: return@mapNotNull null
+                    
+                    // Pull coordinates from multiple possible field names, ensuring Number -> Double conversion
+                    val x = (adresse["x"] as? Number)?.toDouble() 
+                        ?: (adresse["wgs84koordinat_længde"] as? Number)?.toDouble() ?: 0.0
+                    val y = (adresse["y"] as? Number)?.toDouble() 
+                        ?: (adresse["wgs84koordinat_bredde"] as? Number)?.toDouble() ?: 0.0
+                    
                     AddressSuggestion(
                         label = entry["tekst"] as? String ?: "",
                         streetName = street,
                         fullAddress = (entry["tekst"] as? String ?: "").replace("  ", " ").trim(),
-                        latitude = (adresse["y"] as? Double) ?: (adresse["wgs84koordinat_bredde"] as? Double) ?: 0.0,
-                        longitude = (adresse["x"] as? Double) ?: (adresse["wgs84koordinat_længde"] as? Double) ?: 0.0,
+                        latitude = y,
+                        longitude = x,
                         id = adresse["id"] as? String,
                         type = "adresse"
-                    )
+                    ).also { 
+                        Log.d("ApiHelper", "Found suggestion: ${it.label} (${it.latitude}, ${it.longitude})")
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -325,7 +340,7 @@ object ApiHelper {
 
     suspend fun addressLookup(context: Context, id: String, type: String): AddressSuggestion? = withContext(Dispatchers.IO) {
         try {
-            val token = SecurePrefs.getKdsToken(context) ?: "adressevaelger123"
+            val token = SecurePrefs.getKdsToken(context) ?: BuildConfig.DATA_FORSYNINGEN_TOKEN
             val url = "https://adressevaelger.dk/husnumre/$id?token=$token"
             val request = Request.Builder().url(url).get().addHeader("User-Agent", "TilsynsApp-Android/${BuildConfig.VERSION_NAME}").addHeader("Accept", "application/json").build()
             kdsClient.newCall(request).execute().use { response ->
@@ -342,8 +357,8 @@ object ApiHelper {
                     label = (data["adgangsadressebetegnelse"] ?: data["adressebetegnelse"]) as? String ?: "",
                     streetName = data["vejnavn"] as? String ?: "",
                     fullAddress = (data["adgangsadressebetegnelse"] ?: data["adressebetegnelse"]) as? String ?: "",
-                    latitude = (coords?.get("y") as? Double) ?: (data["y"] as? Double) ?: (data["wgs84koordinat_bredde"] as? Double) ?: 0.0,
-                    longitude = (coords?.get("x") as? Double) ?: (data["x"] as? Double) ?: (data["wgs84koordinat_længde"] as? Double) ?: 0.0,
+                    latitude = (coords?.get("y") as? Number)?.toDouble() ?: (data["y"] as? Number)?.toDouble() ?: (data["wgs84koordinat_bredde"] as? Number)?.toDouble() ?: 0.0,
+                    longitude = (coords?.get("x") as? Number)?.toDouble() ?: (data["x"] as? Number)?.toDouble() ?: (data["wgs84koordinat_længde"] as? Number)?.toDouble() ?: 0.0,
                     id = id,
                     type = type
                 )
@@ -356,7 +371,7 @@ object ApiHelper {
 
     suspend fun reverseGeocode(context: Context, latitude: Double, longitude: Double): AddressSuggestion? = withContext(Dispatchers.IO) {
         try {
-            val token = SecurePrefs.getKdsToken(context) ?: "adressevaelger123"
+            val token = SecurePrefs.getKdsToken(context) ?: BuildConfig.DATA_FORSYNINGEN_TOKEN
             val url = "https://api.dataforsyningen.dk/adgangsadresser/reverse?x=$longitude&y=$latitude&srid=4326&struktur=mini&token=$token"
             val request = Request.Builder().url(url).get().addHeader("User-Agent", "TilsynsApp-Android/${BuildConfig.VERSION_NAME}").addHeader("Accept", "application/json").build()
             kdsClient.newCall(request).execute().use { response ->
@@ -366,8 +381,14 @@ object ApiHelper {
                 if (!response.isSuccessful || text.isBlank()) return@withContext null
                 val data: Map<String, Any> = gson.fromJson(text, object : TypeToken<Map<String, Any>>() {}.type)
                 
-                // Detailed check for kommunekode
-                val kommunekode = data["kommunekode"] as? String
+                // Detailed check for kommunekode (handle Number or String)
+                val rawKommunekode = data["kommunekode"]
+                val kommunekode = when(rawKommunekode) {
+                    is String -> rawKommunekode
+                    is Number -> "%.0f".format(rawKommunekode.toDouble()).padStart(4, '0')
+                    else -> null
+                }
+                
                 if (kommunekode != AARHUS_KOMMUNEKODE) {
                     Log.d("ApiHelper", "Reverse rejected: kommunekode=$kommunekode (outside Aarhus)")
                     return@withContext null
@@ -376,14 +397,15 @@ object ApiHelper {
                 val street = data["vejnavn"] as? String ?: return@withContext null
                 // Use 'betegnelse' or 'adressebetegnelse' for the full address string
                 val full = (data["betegnelse"] ?: data["adressebetegnelse"]) as? String ?: ""
-
                 AddressSuggestion(
                     label = full,
                     streetName = street,
                     fullAddress = full,
-                    latitude = (data["y"] as? Double) ?: (data["etrs89koordinat_nord"] as? Double) ?: latitude,
-                    longitude = (data["x"] as? Double) ?: (data["etrs89koordinat_øst"] as? Double) ?: longitude
-                )
+                    latitude = (data["y"] as? Number)?.toDouble() ?: (data["etrs89koordinat_nord"] as? Number)?.toDouble() ?: latitude,
+                    longitude = (data["x"] as? Number)?.toDouble() ?: (data["etrs89koordinat_øst"] as? Number)?.toDouble() ?: longitude
+                ).also {
+                    Log.d("ApiHelper", "Reverse resolved: ${it.fullAddress} at ${it.latitude}, ${it.longitude}")
+                }
             }
         } catch (e: Exception) {
             Log.e("ApiHelper", "Reverse exception: ${e.message}")
