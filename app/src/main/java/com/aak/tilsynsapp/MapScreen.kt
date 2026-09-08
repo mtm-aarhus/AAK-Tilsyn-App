@@ -240,7 +240,7 @@ fun MapScreen(
             // Indmeldt-creation state (triggered by tapping an empty point on the map)
             var tappedLat by remember { mutableStateOf<Double?>(null) }
             var tappedLon by remember { mutableStateOf<Double?>(null) }
-            var tappedAddress by remember { mutableStateOf<ApiHelper.DawaSuggestion?>(null) }
+            var tappedAddress by remember { mutableStateOf<ApiHelper.AddressSuggestion?>(null) }
             var isLoadingAddress by remember { mutableStateOf(false) }
             var showIndmeldtFormDialog by remember { mutableStateOf(false) }
 
@@ -352,7 +352,7 @@ fun MapScreen(
                                 tappedAddress = null
                                 isLoadingAddress = true
                                 coroutineScope.launch {
-                                    tappedAddress = ApiHelper.dawaReverseGeocode(p.latitude, p.longitude)
+                                    tappedAddress = ApiHelper.reverseGeocode(context, p.latitude, p.longitude)
                                     isLoadingAddress = false
                                 }
                                 return true
@@ -698,7 +698,7 @@ fun LegendItem(color: Color, label: String) {
 private fun CreateIndmeldtTapDialog(
     latitude: Double,
     longitude: Double,
-    address: ApiHelper.DawaSuggestion?,
+    address: ApiHelper.AddressSuggestion?,
     isLoadingAddress: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (title: String, description: String?) -> Unit,

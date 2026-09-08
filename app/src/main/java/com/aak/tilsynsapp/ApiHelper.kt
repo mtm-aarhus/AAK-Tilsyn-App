@@ -26,21 +26,24 @@ import kotlin.coroutines.resumeWithException
 
 object ApiHelper {
     private val gson = Gson()
-    // OkHttp's read/write timeouts are *idle* timeouts (max gap between bytes), not a
-    // wall-clock cap. As long as bytes are flowing the connection stays open, which is
-    // what we want for slow field connections — the user can press "Annullér" if it's
-    // actually stuck. Connect is short for fast offline detection.
+    
+    // Main client for PyOrchestrator
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
         .writeTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
         .build()
 
-    /**
-     * Suspend wrapper around an OkHttp Call that respects coroutine cancellation.
-     * When the surrounding coroutine is cancelled, the underlying HTTP call is also
-     * cancelled — so the server doesn't keep processing a request the user just aborted.
-     */
+    // Dedicated KDS client: Force HTTP/1.1 to avoid "source exhausted prematurely"
+    // and other protocol issues known with Dataforsyningen's infrastructure.
+    private val kdsClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .protocols(listOf(okhttp3.Protocol.HTTP_1_1))
+            .build()
+    }
+
     private suspend fun Call.awaitResponse(): Response = suspendCancellableCoroutine { cont ->
         cont.invokeOnCancellation {
             try { this.cancel() } catch (_: Throwable) {}
@@ -55,14 +58,9 @@ object ApiHelper {
         })
     }
 
-    /**
-     * Returns true if the device currently has an active network with internet capability.
-     * Used for fast offline detection before launching a request — UI can show a clear
-     * "no connection" message instead of waiting for OkHttp's DNS lookup to fail.
-     */
     fun hasInternet(context: Context): Boolean {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            ?: return true // ConnectivityManager unavailable — assume online, let the request try
+            ?: return true
         val network = cm.activeNetwork ?: return false
         val caps = cm.getNetworkCapabilities(network) ?: return false
         return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
@@ -83,18 +81,12 @@ object ApiHelper {
                 .build()
 
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    Log.e("ApiHelper", "Tasks error: ${response.code}")
-                    return@withContext null
-                }
+                if (!response.isSuccessful) return@withContext null
                 val rawJson = response.body.string()
                 val type = object : TypeToken<List<TilsynItem>>() {}.type
                 return@withContext gson.fromJson(rawJson, type)
             }
-        } catch (e: Exception) {
-            Log.e("ApiHelper", "Error fetching tasks: ${e.message}")
-            null
-        }
+        } catch (e: Exception) { null }
     }
 
     suspend fun getUnifiedHistory(context: Context): List<TilsynItem>? = withContext(Dispatchers.IO) {
@@ -107,24 +99,18 @@ object ApiHelper {
                 .build()
 
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    Log.e("ApiHelper", "History error: ${response.code}")
-                    return@withContext null
-                }
+                if (!response.isSuccessful) return@withContext null
                 val rawJson = response.body.string()
                 val type = object : TypeToken<List<TilsynItem>>() {}.type
                 return@withContext gson.fromJson(rawJson, type)
             }
-        } catch (e: Exception) {
-            Log.e("ApiHelper", "Error fetching history: ${e.message}")
-            null
-        }
+        } catch (e: Exception) { null }
     }
 
     suspend fun unifiedInspect(
         context: Context,
         id: String,
-        type: String, // "permission" or "henstilling"
+        type: String,
         comment: String?,
         selection: String? = null,
         oldStatus: String? = null,
@@ -142,10 +128,7 @@ object ApiHelper {
                 "selection" to selection,
                 "inspected_at" to SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.ENGLISH).format(Date())
             )
-            
             if (oldStatus != null) payload["oldStatus"] = oldStatus
-            
-            // Extract specific fields for history tracking if they exist in updates
             if (updates != null) {
                 payload["updates"] = updates
                 if (updates.containsKey("kvadratmeter")) payload["kvadratmeter"] = updates["kvadratmeter"]
@@ -153,8 +136,6 @@ object ApiHelper {
             }
 
             val jsonPayload = gson.toJson(payload)
-            Log.d("ApiHelper", "unifiedInspect Payload: $jsonPayload")
-
             val requestBody = jsonPayload.toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
                 .url("${getBaseUrl()}tilsyn/inspect")
@@ -163,18 +144,8 @@ object ApiHelper {
                 .addHeader("Content-Type", "application/json")
                 .build()
 
-            client.newCall(request).awaitResponse().use { response ->
-                val responseBody = response.body.string()
-                Log.d("ApiHelper", "unifiedInspect Response (${response.code}): $responseBody")
-                return@withContext response.isSuccessful
-            }
-        } catch (e: CancellationException) {
-            // User cancelled — let cancellation propagate so the caller can react.
-            throw e
-        } catch (e: Exception) {
-            Log.e("ApiHelper", "Unified inspect error: ${e.message}", e)
-            return@withContext false
-        }
+            client.newCall(request).awaitResponse().use { it.isSuccessful }
+        } catch (e: CancellationException) { throw e } catch (e: Exception) { false }
     }
 
     suspend fun sendRegelrytterenPayload(
@@ -222,24 +193,20 @@ object ApiHelper {
         } catch (_: Exception) { null }
     }
 
-    suspend fun pollAuth(token: String): Pair<String, String?>? = withContext(Dispatchers.IO) {
+    suspend fun pollAuth(token: String): Map<String, String?>? = withContext(Dispatchers.IO) {
         try {
             val json = gson.toJson(mapOf("token" to token))
             val requestBody = json.toRequestBody("application/json".toMediaType())
-
-            val request = Request.Builder()
-                .url("${getBaseUrl()}auth/check")
-                .post(requestBody)
-                .addHeader("Content-Type", "application/json")
-                .build()
-
+            val request = Request.Builder().url("${getBaseUrl()}auth/check").post(requestBody).addHeader("Content-Type", "application/json").build()
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@withContext null
                 val map: Map<String, Any> = gson.fromJson(response.body.string(), object : TypeToken<Map<String, Any>>() {}.type)
-                val authorized = map["authorized"] == true
-                val keyFromServer = map["api_key"] as? String
-                val emailFromServer = map["email"] as? String
-                if (authorized && !keyFromServer.isNullOrBlank()) Pair(keyFromServer, emailFromServer) else null
+                if (map["authorized"] != true) return@withContext null
+                mapOf(
+                    "api_key" to (map["api_key"] as? String),
+                    "email" to (map["email"] as? String),
+                    "kds_token" to (map["kds_token"] as? String)
+                )
             }
         } catch (_: Exception) { null }
     }
@@ -248,27 +215,11 @@ object ApiHelper {
         try {
             val apiKey = SecurePrefs.getApiKey(context) ?: return@withContext false
             val email = SecurePrefs.getEmail(context) ?: return@withContext false
-            if (email.isBlank() || fcmToken.isBlank()) return@withContext false
-
             val payload = mapOf("email" to email, "fcm_token" to fcmToken)
             val body = gson.toJson(payload).toRequestBody("application/json".toMediaType())
-            val request = Request.Builder()
-                .url("${getBaseUrl()}tilsyn/register-token")
-                .post(body)
-                .addHeader("X-API-Key", apiKey)
-                .addHeader("Content-Type", "application/json")
-                .build()
-
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    Log.e("ApiHelper", "registerFcmToken error: ${response.code}")
-                }
-                response.isSuccessful
-            }
-        } catch (e: Exception) {
-            Log.e("ApiHelper", "registerFcmToken exception: ${e.message}")
-            false
-        }
+            val request = Request.Builder().url("${getBaseUrl()}tilsyn/register-token").post(body).addHeader("X-API-Key", apiKey).addHeader("Content-Type", "application/json").build()
+            client.newCall(request).execute().use { it.isSuccessful }
+        } catch (e: Exception) { false }
     }
 
     suspend fun fetchVersionInfo(): Map<String, Any>? = withContext(Dispatchers.IO) {
@@ -295,9 +246,7 @@ object ApiHelper {
         createdBySource: String = "app"
     ): IndmeldtCreateResult = withContext(Dispatchers.IO) {
         try {
-            val apiKey = SecurePrefs.getApiKey(context)
-                ?: return@withContext IndmeldtCreateResult(false, null, null)
-
+            val apiKey = SecurePrefs.getApiKey(context) ?: return@withContext IndmeldtCreateResult(false, null, null)
             val payload = mapOf(
                 "full_address" to fullAddress,
                 "street_name" to streetName,
@@ -309,147 +258,135 @@ object ApiHelper {
                 "created_by_source" to createdBySource,
             )
             val body = gson.toJson(payload).toRequestBody("application/json".toMediaType())
-            val request = Request.Builder()
-                .url("${getBaseUrl()}tilsyn/indmeldt")
-                .post(body)
-                .addHeader("X-API-Key", apiKey)
-                .addHeader("Content-Type", "application/json")
-                .build()
-
+            val request = Request.Builder().url("${getBaseUrl()}tilsyn/indmeldt").post(body).addHeader("X-API-Key", apiKey).addHeader("Content-Type", "application/json").build()
             client.newCall(request).awaitResponse().use { response ->
-                if (!response.isSuccessful) {
-                    Log.e("ApiHelper", "createIndmeldt error: ${response.code}")
-                    return@withContext IndmeldtCreateResult(false, null, null)
-                }
-                val map: Map<String, Any> = gson.fromJson(
-                    response.body.string(),
-                    object : TypeToken<Map<String, Any>>() {}.type
-                )
+                if (!response.isSuccessful) return@withContext IndmeldtCreateResult(false, null, null)
+                val map: Map<String, Any> = gson.fromJson(response.body.string(), object : TypeToken<Map<String, Any>>() {}.type)
                 IndmeldtCreateResult(true, map["id"] as? String, map["case_number"] as? String)
             }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.e("ApiHelper", "createIndmeldt exception: ${e.message}")
-            IndmeldtCreateResult(false, null, null)
-        }
+        } catch (e: CancellationException) { throw e } catch (e: Exception) { IndmeldtCreateResult(false, null, null) }
     }
 
-    data class DawaSuggestion(
+    data class AddressSuggestion(
         val label: String,
         val streetName: String?,
         val fullAddress: String,
         val latitude: Double,
         val longitude: Double,
+        val id: String? = null,
+        val type: String? = null
     )
 
-    private const val DAWA_BASE = "https://api.dataforsyningen.dk"
     private const val AARHUS_KOMMUNEKODE = "0751"
 
-    // Dedicated DAWA client: force HTTP/1.1 (some Android stacks hit issues with
-    // HTTP/2 gzip handling against DAWA) and let OkHttp transparently decompress.
-    private val dawaClient: OkHttpClient by lazy {
-        OkHttpClient.Builder()
-            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-            .protocols(listOf(okhttp3.Protocol.HTTP_1_1))
-            .build()
-    }
-
-    private fun dawaRequest(url: String): Request =
-        Request.Builder()
-            .url(url)
-            .get()
-            .addHeader("User-Agent", "TilsynsApp-Android/${BuildConfig.VERSION_NAME}")
-            .addHeader("Accept", "application/json")
-            .addHeader("Accept-Encoding", "identity") // disable gzip so we always see raw JSON
-            .build()
-
-    private fun readBodyOrNull(response: Response): String? {
-        return try {
-            val bytes = response.body.bytes()
-            if (bytes.isEmpty()) null else bytes.toString(Charsets.UTF_8)
-        } catch (e: Exception) {
-            Log.e("ApiHelper", "readBody failed: ${e.message}")
-            null
-        }
-    }
-
-    suspend fun dawaAutocomplete(query: String): List<DawaSuggestion> = withContext(Dispatchers.IO) {
+    suspend fun addressAutocomplete(context: Context, query: String): List<AddressSuggestion> = withContext(Dispatchers.IO) {
         if (query.isBlank() || query.length < 2) return@withContext emptyList()
         try {
+            val token = SecurePrefs.getKdsToken(context) ?: "adressevaelger123"
             val encoded = java.net.URLEncoder.encode(query, "UTF-8")
-            val url = "$DAWA_BASE/adresser/autocomplete?q=$encoded&per_side=10&kommunekode=$AARHUS_KOMMUNEKODE"
-            dawaClient.newCall(dawaRequest(url)).execute().use { response ->
-                val text = readBodyOrNull(response)
-                Log.d("ApiHelper", "DAWA autocomplete: code=${response.code}, len=${text?.length ?: 0}")
-                if (!response.isSuccessful || text.isNullOrBlank()) return@withContext emptyList()
-                val type = object : TypeToken<List<Map<String, Any>>>() {}.type
-                val raw: List<Map<String, Any>> = gson.fromJson(text, type) ?: return@withContext emptyList()
+            val url = "https://api.dataforsyningen.dk/adresser/autocomplete?q=$encoded&per_side=20&kommunekode=$AARHUS_KOMMUNEKODE&token=$token"
+            
+            val request = Request.Builder()
+                .url(url)
+                .get()
+                .addHeader("User-Agent", "TilsynsApp-Android/${BuildConfig.VERSION_NAME}")
+                .addHeader("Accept", "application/json")
+                .build()
+
+            kdsClient.newCall(request).execute().use { response ->
+                val body = response.body
+                val text = body.string()
+                Log.d("ApiHelper", "Autocomplete raw: $text")
+                if (!response.isSuccessful || text.isBlank()) return@withContext emptyList()
+                
+                // The log shows a raw JSON array: [ { "tekst": "...", "adresse": { ... } }, ... ]
+                val listType = object : TypeToken<List<Map<String, Any>>>() {}.type
+                val raw: List<Map<String, Any>> = gson.fromJson(text, listType) ?: return@withContext emptyList()
+                
                 raw.mapNotNull { entry ->
                     val adresse = entry["adresse"] as? Map<*, *> ?: return@mapNotNull null
                     val street = adresse["vejnavn"] as? String ?: return@mapNotNull null
-                    val husnr = adresse["husnr"] as? String ?: ""
-                    val postnr = adresse["postnr"] as? String ?: ""
-                    val postnrnavn = adresse["postnrnavn"] as? String ?: ""
-                    val x = (adresse["x"] as? Double) ?: return@mapNotNull null
-                    val y = (adresse["y"] as? Double) ?: return@mapNotNull null
-                    val label = entry["tekst"] as? String
-                        ?: "$street $husnr, $postnr $postnrnavn".trim()
-                    DawaSuggestion(
-                        label = label,
+                    AddressSuggestion(
+                        label = entry["tekst"] as? String ?: "",
                         streetName = street,
-                        fullAddress = "$street $husnr, $postnr $postnrnavn".replace("  ", " ").trim(),
-                        latitude = y,
-                        longitude = x,
+                        fullAddress = (entry["tekst"] as? String ?: "").replace("  ", " ").trim(),
+                        latitude = (adresse["y"] as? Double) ?: (adresse["wgs84koordinat_bredde"] as? Double) ?: 0.0,
+                        longitude = (adresse["x"] as? Double) ?: (adresse["wgs84koordinat_længde"] as? Double) ?: 0.0,
+                        id = adresse["id"] as? String,
+                        type = "adresse"
                     )
                 }
             }
         } catch (e: Exception) {
-            Log.e("ApiHelper", "dawaAutocomplete exception", e)
+            Log.e("ApiHelper", "Autocomplete exception: ${e.message}")
             emptyList()
         }
     }
 
-    suspend fun dawaReverseGeocode(latitude: Double, longitude: Double): DawaSuggestion? = withContext(Dispatchers.IO) {
+    suspend fun addressLookup(context: Context, id: String, type: String): AddressSuggestion? = withContext(Dispatchers.IO) {
         try {
-            // struktur=flad gives kommunekode at the top level so we can verify Aarhus.
-            val url = "$DAWA_BASE/adgangsadresser/reverse?x=$longitude&y=$latitude&struktur=flad"
-            dawaClient.newCall(dawaRequest(url)).execute().use { response ->
-                val text = readBodyOrNull(response)
-                Log.d("ApiHelper", "DAWA reverse: code=${response.code}, len=${text?.length ?: 0}")
-                if (!response.isSuccessful || text.isNullOrBlank()) return@withContext null
-                val map: Map<String, Any> = gson.fromJson(
-                    text,
-                    object : TypeToken<Map<String, Any>>() {}.type
-                ) ?: return@withContext null
-
-                // Reject addresses outside Aarhus Kommune.
-                val kommunekode = map["kommunekode"] as? String
-                if (kommunekode != AARHUS_KOMMUNEKODE) {
-                    Log.d("ApiHelper", "DAWA reverse: rejected kommunekode=$kommunekode (outside Aarhus)")
-                    return@withContext null
-                }
-
-                val street = map["vejnavn"] as? String ?: return@withContext null
-                val husnr = map["husnr"] as? String ?: ""
-                val postnr = map["postnr"] as? String ?: ""
-                val postnrnavn = map["postnrnavn"] as? String ?: ""
-                // In struktur=flad coordinates are wgs84: (etrs89koordinat_øst = x, etrs89koordinat_nord = y)
-                // but there's also wgs84koordinat_bredde/længde. Fall back to the input coords.
-                val x = (map["wgs84koordinat_længde"] as? Double) ?: longitude
-                val y = (map["wgs84koordinat_bredde"] as? Double) ?: latitude
-                val full = "$street $husnr, $postnr $postnrnavn".replace("  ", " ").trim()
-                DawaSuggestion(
-                    label = full,
-                    streetName = street,
-                    fullAddress = full,
-                    latitude = y,
-                    longitude = x,
+            val token = SecurePrefs.getKdsToken(context) ?: "adressevaelger123"
+            val url = "https://adressevaelger.dk/husnumre/$id?token=$token"
+            val request = Request.Builder().url(url).get().addHeader("User-Agent", "TilsynsApp-Android/${BuildConfig.VERSION_NAME}").addHeader("Accept", "application/json").build()
+            kdsClient.newCall(request).execute().use { response ->
+                val body = response.body
+                val text = body.string()
+                Log.d("ApiHelper", "Lookup raw: $text")
+                if (!response.isSuccessful || text.isBlank()) return@withContext null
+                val root: Map<String, Any> = gson.fromJson(text, object : TypeToken<Map<String, Any>>() {}.type)
+                if (root["status"] != "ok") return@withContext null
+                val data = (root["husnummer"] ?: root["adresse"]) as? Map<*, *> ?: return@withContext null
+                val point = data["adgangspunkt"] as? Map<*, *>
+                val coords = point?.get("koordinater") as? Map<*, *>
+                AddressSuggestion(
+                    label = (data["adgangsadressebetegnelse"] ?: data["adressebetegnelse"]) as? String ?: "",
+                    streetName = data["vejnavn"] as? String ?: "",
+                    fullAddress = (data["adgangsadressebetegnelse"] ?: data["adressebetegnelse"]) as? String ?: "",
+                    latitude = (coords?.get("y") as? Double) ?: (data["y"] as? Double) ?: (data["wgs84koordinat_bredde"] as? Double) ?: 0.0,
+                    longitude = (coords?.get("x") as? Double) ?: (data["x"] as? Double) ?: (data["wgs84koordinat_længde"] as? Double) ?: 0.0,
+                    id = id,
+                    type = type
                 )
             }
         } catch (e: Exception) {
-            Log.e("ApiHelper", "dawaReverseGeocode exception", e)
+            Log.e("ApiHelper", "Lookup exception: ${e.message}")
+            null
+        }
+    }
+
+    suspend fun reverseGeocode(context: Context, latitude: Double, longitude: Double): AddressSuggestion? = withContext(Dispatchers.IO) {
+        try {
+            val token = SecurePrefs.getKdsToken(context) ?: "adressevaelger123"
+            val url = "https://api.dataforsyningen.dk/adgangsadresser/reverse?x=$longitude&y=$latitude&srid=4326&struktur=mini&token=$token"
+            val request = Request.Builder().url(url).get().addHeader("User-Agent", "TilsynsApp-Android/${BuildConfig.VERSION_NAME}").addHeader("Accept", "application/json").build()
+            kdsClient.newCall(request).execute().use { response ->
+                val body = response.body
+                val text = body.string()
+                Log.d("ApiHelper", "Reverse raw: $text")
+                if (!response.isSuccessful || text.isBlank()) return@withContext null
+                val data: Map<String, Any> = gson.fromJson(text, object : TypeToken<Map<String, Any>>() {}.type)
+                
+                // Detailed check for kommunekode
+                val kommunekode = data["kommunekode"] as? String
+                if (kommunekode != AARHUS_KOMMUNEKODE) {
+                    Log.d("ApiHelper", "Reverse rejected: kommunekode=$kommunekode (outside Aarhus)")
+                    return@withContext null
+                }
+
+                val street = data["vejnavn"] as? String ?: return@withContext null
+                // Use 'betegnelse' or 'adressebetegnelse' for the full address string
+                val full = (data["betegnelse"] ?: data["adressebetegnelse"]) as? String ?: ""
+
+                AddressSuggestion(
+                    label = full,
+                    streetName = street,
+                    fullAddress = full,
+                    latitude = (data["y"] as? Double) ?: (data["etrs89koordinat_nord"] as? Double) ?: latitude,
+                    longitude = (data["x"] as? Double) ?: (data["etrs89koordinat_øst"] as? Double) ?: longitude
+                )
+            }
+        } catch (e: Exception) {
+            Log.e("ApiHelper", "Reverse exception: ${e.message}")
             null
         }
     }
@@ -457,30 +394,10 @@ object ApiHelper {
     suspend fun uploadImage(context: Context, id: String, imageBytes: ByteArray, fileName: String? = null): Boolean = withContext(Dispatchers.IO) {
         try {
             val apiKey = SecurePrefs.getApiKey(context) ?: return@withContext false
-            
-            // Use provided filename or create a readable one: 20240520_143005_123.jpg
             val finalFileName = fileName ?: (SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.getDefault()).format(Date()) + ".jpg")
-
-            val requestBody = okhttp3.MultipartBody.Builder()
-                .setType(okhttp3.MultipartBody.FORM)
-                .addFormDataPart("image", finalFileName, 
-                    imageBytes.toRequestBody("image/jpeg".toMediaType()))
-                .addFormDataPart("id", id)
-                .addFormDataPart("filename", finalFileName)
-                .build()
-
-            val request = Request.Builder()
-                .url("${getBaseUrl()}tilsyn/upload-image")
-                .post(requestBody)
-                .addHeader("X-API-Key", apiKey)
-                .build()
-
+            val requestBody = okhttp3.MultipartBody.Builder().setType(okhttp3.MultipartBody.FORM).addFormDataPart("image", finalFileName, imageBytes.toRequestBody("image/jpeg".toMediaType())).addFormDataPart("id", id).addFormDataPart("filename", finalFileName).build()
+            val request = Request.Builder().url("${getBaseUrl()}tilsyn/upload-image").post(requestBody).addHeader("X-API-Key", apiKey).build()
             client.newCall(request).awaitResponse().use { it.isSuccessful }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.e("ApiHelper", "Image upload failed: ${e.message}")
-            false
-        }
+        } catch (e: CancellationException) { throw e } catch (e: Exception) { false }
     }
 }

@@ -303,9 +303,20 @@ class TilsynViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             val result = ApiHelper.pollAuth(token)
             if (result != null) {
-                val (apiKey, email) = result
+                val apiKey = result["api_key"]
+                val email = result["email"]
+                val kdsToken = result["kds_token"]
+                
                 val context = getApplication<Application>()
-                SecurePrefs.saveApiKey(context, apiKey)
+                
+                if (!apiKey.isNullOrBlank()) {
+                    SecurePrefs.saveApiKey(context, apiKey)
+                }
+
+                if (!kdsToken.isNullOrBlank()) {
+                    SecurePrefs.saveKdsToken(context, kdsToken)
+                }
+
                 if (!email.isNullOrBlank()) SecurePrefs.saveEmail(context, email)
                 SecurePrefs.saveLoginTimestamp(context)
                 _loginState.value = TilsynLoginState.LoggedIn

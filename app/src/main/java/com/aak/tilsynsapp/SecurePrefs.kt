@@ -22,6 +22,7 @@ object SecurePrefs {
     private const val IV_SEPARATOR = "]"
 
     private const val KEY_API = "api_key"
+    private const val KEY_KDS_TOKEN = "kds_token"
     private const val KEY_TOKEN = "login_token"
     private const val KEY_EMAIL = "user_email"
     private const val KEY_LOGIN_TIME = "login_time"
@@ -94,6 +95,9 @@ object SecurePrefs {
 
     fun saveApiKey(context: Context, key: String) = saveEncrypted(context, KEY_API, key)
     fun getApiKey(context: Context): String? = loadDecrypted(context, KEY_API)
+
+    fun saveKdsToken(context: Context, token: String) = saveEncrypted(context, KEY_KDS_TOKEN, token)
+    fun getKdsToken(context: Context): String? = loadDecrypted(context, KEY_KDS_TOKEN)
 
     fun saveToken(context: Context, token: String) = saveEncrypted(context, KEY_TOKEN, token)
     fun getToken(context: Context): String? = loadDecrypted(context, KEY_TOKEN)

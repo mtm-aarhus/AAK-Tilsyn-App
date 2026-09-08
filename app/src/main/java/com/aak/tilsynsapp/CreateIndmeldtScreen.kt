@@ -48,10 +48,11 @@ fun CreateIndmeldtScreen(
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var searchQuery by remember { mutableStateOf("") }
-    var suggestions by remember { mutableStateOf<List<ApiHelper.DawaSuggestion>>(emptyList()) }
+    var suggestions by remember { mutableStateOf<List<ApiHelper.AddressSuggestion>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
+    var isFetchingDetails by remember { mutableStateOf(false) }
 
-    var selected by remember { mutableStateOf<ApiHelper.DawaSuggestion?>(null) }
+    var selected by remember { mutableStateOf<ApiHelper.AddressSuggestion?>(null) }
     var submitJob by remember { mutableStateOf<Job?>(null) }
     val isSubmitting = submitJob != null
 
@@ -64,7 +65,7 @@ fun CreateIndmeldtScreen(
         }
         isSearching = true
         delay(250)
-        suggestions = ApiHelper.dawaAutocomplete(searchQuery)
+        suggestions = ApiHelper.addressAutocomplete(context, searchQuery)
         isSearching = false
     }
 
@@ -101,7 +102,7 @@ fun CreateIndmeldtScreen(
                 placeholder = { Text("Søg adresse…") },
                 leadingIcon = { Icon(Icons.Default.Search, null) },
                 trailingIcon = {
-                    if (isSearching) {
+                    if (isSearching || isFetchingDetails) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(20.dp),
                             strokeWidth = 2.dp,
@@ -128,8 +129,29 @@ fun CreateIndmeldtScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        selected = s
-                                        searchQuery = s.label
+                                        // The stable autocomplete API provides coordinates immediately.
+                                        // We only use the detailed lookup if coordinates are missing.
+                                        if (s.latitude == 0.0 && s.longitude == 0.0 && s.id != null && s.type != null) {
+                                            isFetchingDetails = true
+                                            coroutineScope.launch {
+                                                try {
+                                                    val detailed = ApiHelper.addressLookup(context, s.id, s.type)
+                                                    if (detailed != null) {
+                                                        selected = detailed
+                                                        searchQuery = detailed.label
+                                                    } else {
+                                                        // Fallback to original selection if details fail
+                                                        selected = s
+                                                        searchQuery = s.label
+                                                    }
+                                                } finally {
+                                                    isFetchingDetails = false
+                                                }
+                                            }
+                                        } else {
+                                            selected = s
+                                            searchQuery = s.label
+                                        }
                                         suggestions = emptyList()
                                     }
                                     .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -207,7 +229,7 @@ fun CreateIndmeldtScreen(
 
             Spacer(modifier = Modifier.weight(1f))
 
-            val canSubmit = !isSubmitting && title.isNotBlank() && selected != null
+            val canSubmit = !isSubmitting && !isFetchingDetails && title.isNotBlank() && selected != null
 
             Button(
                 onClick = {
