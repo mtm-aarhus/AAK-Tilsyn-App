@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Older Android trust stores lack the roots these KDS hosts chain to, which gives
+    "CertPathValidatorException: Trust anchor for certification path not found".
+    Bundle just those roots (from Mozilla's CA list) on top of the system store,
+    for just these domains. Normal validation and hostname checks stay on.
+
+    - graphql.datafordeler.dk: Sectigo Public Server Authentication Root R46
+      (served self-signed, no cross-sign to an older root), SHA-256
+      7B:B6:47:A6:2A:EE:AC:88:BF:25:7A:A5:22:D0:1F:FE:A3:95:E0:AB:45:C7:3F:93:F6:56:54:EC:38:F2:5A:06
+    - adressevaelger.dk: Let's Encrypt -> ISRG Root X1 (only trusted from Android 7.1.1;
+      minSdk is 24), SHA-256
+      96:BC:EC:06:26:49:76:F3:74:60:77:9A:CF:28:C5:A7:CF:E8:A3:C0:AA:E1:1A:8F:FC:EE:05:C0:BD:DF:08:C6
+-->
+<network-security-config>
+    <domain-config>
+        <domain includeSubdomains="true">datafordeler.dk</domain>
+        <domain includeSubdomains="true">adressevaelger.dk</domain>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="@raw/sectigo_public_server_auth_root_r46" />
+            <certificates src="@raw/isrg_root_x1" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>

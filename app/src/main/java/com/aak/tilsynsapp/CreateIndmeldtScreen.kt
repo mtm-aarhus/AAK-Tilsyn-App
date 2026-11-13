@@ -58,6 +58,7 @@ fun CreateIndmeldtScreen(
 
     // Debounced live autocomplete
     LaunchedEffect(searchQuery) {
+        android.util.Log.d("CreateIndmeldt", "searchQuery changed: '$searchQuery' (len=${searchQuery.length})")
         if (searchQuery.length < 3 || searchQuery == selected?.label) {
             suggestions = emptyList()
             isSearching = false
@@ -65,7 +66,9 @@ fun CreateIndmeldtScreen(
         }
         isSearching = true
         delay(250)
+        android.util.Log.d("CreateIndmeldt", "Calling ApiHelper.addressAutocomplete for '$searchQuery'")
         suggestions = ApiHelper.addressAutocomplete(context, searchQuery)
+        android.util.Log.d("CreateIndmeldt", "Received ${suggestions.size} suggestions for '$searchQuery'")
         isSearching = false
     }
 
@@ -129,28 +132,27 @@ fun CreateIndmeldtScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        // The stable autocomplete API provides coordinates immediately.
-                                        // We only use the detailed lookup if coordinates are missing.
-                                        if (s.latitude == 0.0 && s.longitude == 0.0 && s.id != null && s.type != null) {
-                                            isFetchingDetails = true
-                                            coroutineScope.launch {
-                                                try {
-                                                    val detailed = ApiHelper.addressLookup(context, s.id, s.type)
-                                                    if (detailed != null) {
-                                                        selected = detailed
-                                                        searchQuery = detailed.label
-                                                    } else {
-                                                        // Fallback to original selection if details fail
-                                                        selected = s
-                                                        searchQuery = s.label
-                                                    }
-                                                } finally {
-                                                    isFetchingDetails = false
+                                        if (s.id == null || s.type == null) {
+                                            // Street-only hit (vejnavn / navngivenvejpostnummer):
+                                            // complete the street name and let the user type the number.
+                                            searchQuery = (s.streetName ?: s.label) + " "
+                                            suggestions = emptyList()
+                                            return@clickable
+                                        }
+                                        // Search hits carry no coordinates; fetch them on tap.
+                                        isFetchingDetails = true
+                                        coroutineScope.launch {
+                                            try {
+                                                val detailed = ApiHelper.addressLookup(context, s.id, s.type)
+                                                if (detailed != null) {
+                                                    selected = detailed
+                                                    searchQuery = detailed.label
+                                                } else {
+                                                    snackbarHostState.showSnackbar("Kunne ikke hente adressen")
                                                 }
+                                            } finally {
+                                                isFetchingDetails = false
                                             }
-                                        } else {
-                                            selected = s
-                                            searchQuery = s.label
                                         }
                                         suggestions = emptyList()
                                     }

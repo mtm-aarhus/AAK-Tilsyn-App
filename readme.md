@@ -10,10 +10,11 @@ TilsynsApp is an internal Android application developed for Teknik og Miljø, Aa
     * Henstillinger
     * Indmeldte tilsyn (ad-hoc, manually created)
 * Interactive map (OSM) with color-coded markers per type
-* Create ad-hoc inspections directly from the map (tap to place) or via address search (DAWA, limited to Aarhus Kommune)
+* Create ad-hoc inspections directly from the map (tap to place) or via address search (Datafordeler & Adressevælger, limited to Aarhus Kommune)
 * Create ad-hoc inspections from the Tilsyn list via a dedicated form with address autocomplete
 * Inspect items with comments, photos (camera + gallery), and status updates
 * Henstilling workflow: register m2, set end date, send to invoicing, or dismiss
+* Permissions left off the weekly list in some months: parklets from October to March by rule (TilsynAPI), and any permission via "Skjul i bestemte måneder" in the inspection dialog. Permissions left off this month show in the history under "Vis skjulte tilsyn", where their months can be changed
 * Indmeldt workflow: comment-based inspection, hide/show
 * Full inspection history with expandable detail cards
 * Pull-to-refresh on all list screens
@@ -25,9 +26,9 @@ TilsynsApp is an internal Android application developed for Teknik og Miljø, Aa
 
 * Single-activity Compose UI with screen-state navigation
 * `TilsynViewModel` manages all data state (tasks, history, map selection)
-* `ApiHelper` handles all network calls (PyOrchestratorAPI, DAWA)
-* Data source: Azure Cosmos DB via PyOrchestratorAPI REST endpoints
-* Address lookup: DAWA (api.dataforsyningen.dk), filtered to kommunekode 0751 (Aarhus)
+* `ApiHelper` handles all network calls (TilsynAPI, Datafordeler, Adressevælger)
+* Data source: Azure Cosmos DB via TilsynAPI (`https://mtmtilsyn.aarhuskommune.dk`, `BuildConfig.API_URL`)
+* Address lookup & reverse geocoding: Datafordeler GraphQL (`DAR_Adressepunkt`, `DAR_Husnummer`) and Adressevælger (`adressevaelger.dk`), filtered to kommunekode 0751 (Aarhus)
 * Map: osmdroid with OpenStreetMap tiles
 
 ## API Endpoints Used
@@ -39,10 +40,16 @@ TilsynsApp is an internal Android application developed for Teknik og Miljø, Aa
 | `/tilsyn/inspect` | POST | Register an inspection |
 | `/tilsyn/indmeldt` | POST | Create ad-hoc inspection (server assigns case number) |
 | `/tilsyn/upload-image` | POST | Upload inspection photos |
-| `/queue` | POST | Queue RegelRytteren route generation |
-| `/auth/request-link` | POST | Request login link |
-| `/auth/check` | POST | Poll login authorization |
-| `/tilsynapp/version` | GET | App version check |
+| `/tilsyn/register-token` | POST | Register the phone for push notifications |
+| `/tilsyn/regelrytteren` | POST | Queue RegelRytteren route generation (TilsynAPI creates the queue item) |
+| `/tilsyn/hidden-months` | POST | Choose the months a permission is left off the weekly list |
+| `/tilsyn/auth/request-link` | POST | Request login link |
+| `/tilsyn/auth/check` | POST | Poll login authorization |
+| `/tilsyn/app/version` | GET | App version check |
+
+The key the app gets at login only opens TilsynAPI. A session saved by an app
+version that used another server is wiped at start-up, so the user logs in once
+more (`SecurePrefs.isSessionFor`).
 
 ## Privacy & Security
 
@@ -59,6 +66,8 @@ TilsynsApp is an internal Android application developed for Teknik og Miljø, Aa
 2. Build signed release APK: Build > Generate Signed Bundle / APK
 3. Upload to Google Play Console (internal testing track)
 4. After rollout, update `min_version` in the API version endpoint to enforce the upgrade
+   (TilsynAPI's `app/sections/tilsyn.py`; for the release that moved to TilsynAPI, the
+   old app's `/api/tilsynapp/version` too - that is what old phones ask)
 
 ## Maintainers
 

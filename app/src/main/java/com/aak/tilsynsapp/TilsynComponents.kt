@@ -29,6 +29,7 @@ fun TilsynExpandedDetails(item: TilsynItem) {
             TilsynDetailRow("Initialer", item.initials)
             TilsynDetailRow("Start", tilsynFormatDate(item.startDate))
             TilsynDetailRow("Slut", tilsynFormatDate(item.endDate))
+            TilsynDetailRow("Vises ikke i", describeMonths(item.effectiveHiddenMonths.orEmpty()))
         } else if (item.type == "indmeldt") {
             TilsynDetailRow("Sagsnummer", item.caseNumber)
             TilsynDetailRow("Titel", item.title)

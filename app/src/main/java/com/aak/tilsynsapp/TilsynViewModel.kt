@@ -103,9 +103,17 @@ class TilsynViewModel(application: Application) : AndroidViewModel(application) 
 
             // -------- NORMAL LOGIN RESTORE --------
             val savedKey = SecurePrefs.getApiKey(context)
-            if (!savedKey.isNullOrBlank() && !SecurePrefs.isLoginExpired(context)) {
+            val loginToken = SecurePrefs.getToken(context)
+            // Sessions without a login token can't re-run /auth/check to pick up keys added
+            // later (e.g. datafordeler_api_key); force a fresh login for those.
+            val missingKeysForGood = SecurePrefs.getDatafordelerApiKey(context).isNullOrBlank() && loginToken.isNullOrBlank()
+            if (!savedKey.isNullOrBlank() && !SecurePrefs.isLoginExpired(context) && !missingKeysForGood) {
                 _loginState.value = TilsynLoginState.LoggedIn
                 registerFcmTokenAsync()
+
+                if (!loginToken.isNullOrBlank()) {
+                    pollAuthToken(loginToken) { _ -> }
+                }
             } else {
                 SecurePrefs.clearAll(context)
                 _loginState.value = TilsynLoginState.Input
@@ -210,6 +218,17 @@ class TilsynViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    suspend fun setHiddenMonthsAwait(id: String, months: List<Int>): Boolean {
+        _loadingStatus.value = "Gemmer måneder..."
+        return try {
+            val success = ApiHelper.setHiddenMonths(getApplication(), id, months)
+            if (success) refreshDataAsync()
+            success
+        } finally {
+            _loadingStatus.value = null
+        }
+    }
+
     suspend fun createIndmeldtAwait(
         fullAddress: String,
         streetName: String?,
@@ -306,15 +325,21 @@ class TilsynViewModel(application: Application) : AndroidViewModel(application) 
                 val apiKey = result["api_key"]
                 val email = result["email"]
                 val kdsToken = result["kds_token"]
+                val datafordelerApiKey = result["datafordeler_api_key"]
                 
                 val context = getApplication<Application>()
                 
                 if (!apiKey.isNullOrBlank()) {
                     SecurePrefs.saveApiKey(context, apiKey)
+                    SecurePrefs.saveServer(context, BuildConfig.API_URL)
                 }
 
                 if (!kdsToken.isNullOrBlank()) {
                     SecurePrefs.saveKdsToken(context, kdsToken)
+                }
+
+                if (!datafordelerApiKey.isNullOrBlank()) {
+                    SecurePrefs.saveDatafordelerApiKey(context, datafordelerApiKey)
                 }
 
                 if (!email.isNullOrBlank()) SecurePrefs.saveEmail(context, email)

@@ -18,10 +18,11 @@ android {
         applicationId = "com.aak.tilsynsapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 15
-        versionName = "2.6"
-        buildConfigField("String", "API_URL", "\"https://pyorchestrator.aarhuskommune.dk/api/\"")
+        versionCode = 17
+        versionName = "2.8"
+        buildConfigField("String", "API_URL", "\"https://mtmtilsyn.aarhuskommune.dk/\"")
         buildConfigField("String", "DATA_FORSYNINGEN_TOKEN", "\"${project.findProperty("DATA_FORSYNINGEN_TOKEN") ?: "adressevaelger123"}\"")
+        buildConfigField("String", "DATAFORDELER_API_KEY", "\"${project.findProperty("DATAFORDELER_API_KEY") ?: ""}\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

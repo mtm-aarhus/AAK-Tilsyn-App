@@ -61,8 +61,10 @@ class MainActivity : ComponentActivity() {
         val api = SecurePrefs.getApiKey(this)
         val email = SecurePrefs.getEmail(this)
 
-        if (!api.isNullOrBlank() && email.isNullOrBlank()) {
-            // Old session from previous app version → wipe it
+        if (!api.isNullOrBlank() &&
+            (email.isNullOrBlank() || !SecurePrefs.isSessionFor(this, BuildConfig.API_URL))) {
+            // Old session from a previous app version - one without the email, or from
+            // another server, whose key this server refuses → wipe it, so the user logs in again
             SecurePrefs.clearAll(this)
         }
 

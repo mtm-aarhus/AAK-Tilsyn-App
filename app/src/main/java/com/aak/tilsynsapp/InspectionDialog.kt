@@ -243,6 +243,25 @@ fun InspectionDialog(
         mutableStateOf(item.displayEndDate.takeIf { !it.isNullOrBlank() } ?: SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())) 
     }
     val showDatePicker = remember { mutableStateOf(false) }
+    var showHiddenMonths by remember { mutableStateOf(false) }
+
+    if (showHiddenMonths) {
+        HiddenMonthsDialog(
+            item = item,
+            saving = submitting,
+            onSave = { months ->
+                runSubmission {
+                    val saved = viewModel.setHiddenMonthsAwait(item.id, months)
+                    if (saved) {
+                        showHiddenMonths = false
+                        Toast.makeText(context, hiddenMonthsSavedText(months), Toast.LENGTH_LONG).show()
+                    }
+                    saved
+                }
+            },
+            onDismiss = { showHiddenMonths = false }
+        )
+    }
 
     if (showDatePicker.value) {
         val datePickerState = rememberDatePickerState(
@@ -336,6 +355,7 @@ fun InspectionDialog(
                                     TilsynDialogDetailRow("Udstyr", item.rovmEquipmentType)
                                     TilsynDialogDetailRow("Start", tilsynFormatDate(item.startDate))
                                     TilsynDialogDetailRow("Slut", tilsynFormatDate(item.endDate))
+                                    TilsynDialogDetailRow("Vises ikke i", describeMonths(item.effectiveHiddenMonths.orEmpty()))
                                 }
                             }
                         }
@@ -737,6 +757,18 @@ fun InspectionDialog(
                                     )
                                 } else {
                                     Text("Gem tilsyn", fontSize = 18.sp)
+                                }
+                            }
+
+                            // Only the weekly list leaves months out, so an expired
+                            // permission has none to choose.
+                            if (item.vejmanDisplayState != "Færdig tilladelse") {
+                                OutlinedButton(
+                                    onClick = { showHiddenMonths = true },
+                                    enabled = !submitting,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Skjul i bestemte måneder", fontSize = 16.sp)
                                 }
                             }
 

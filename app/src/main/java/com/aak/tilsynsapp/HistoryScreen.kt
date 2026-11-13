@@ -72,7 +72,10 @@ fun HistoryScreen(
                 item.displayCaseNumber.lowercase().contains(query) ||
                 item.id.lowercase().contains(query)
             
-            val isHidden = item.hidden == true || item.fakturaStatus == "Fakturer ikke"
+            // Left off the list this month counts as hidden: it is shown with
+            // "Vis skjulte tilsyn", where its months can be changed.
+            val isHidden = item.hidden == true || item.fakturaStatus == "Fakturer ikke" ||
+                item.hiddenThisMonth == true
             val matchesHidden = if (showHidden) true else !isHidden
 
             val itemType = when {

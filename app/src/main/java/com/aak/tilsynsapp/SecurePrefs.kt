@@ -23,9 +23,11 @@ object SecurePrefs {
 
     private const val KEY_API = "api_key"
     private const val KEY_KDS_TOKEN = "kds_token"
+    private const val KEY_DATAFORDELER_API_KEY = "datafordeler_api_key"
     private const val KEY_TOKEN = "login_token"
     private const val KEY_EMAIL = "user_email"
     private const val KEY_LOGIN_TIME = "login_time"
+    private const val KEY_SERVER = "server"
 
     private fun prefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -99,6 +101,9 @@ object SecurePrefs {
     fun saveKdsToken(context: Context, token: String) = saveEncrypted(context, KEY_KDS_TOKEN, token)
     fun getKdsToken(context: Context): String? = loadDecrypted(context, KEY_KDS_TOKEN)
 
+    fun saveDatafordelerApiKey(context: Context, key: String) = saveEncrypted(context, KEY_DATAFORDELER_API_KEY, key)
+    fun getDatafordelerApiKey(context: Context): String? = loadDecrypted(context, KEY_DATAFORDELER_API_KEY)
+
     fun saveToken(context: Context, token: String) = saveEncrypted(context, KEY_TOKEN, token)
     fun getToken(context: Context): String? = loadDecrypted(context, KEY_TOKEN)
 
@@ -108,6 +113,15 @@ object SecurePrefs {
     fun saveLoginTimestamp(context: Context) {
         prefs(context).edit { putLong(KEY_LOGIN_TIME, System.currentTimeMillis()) }
     }
+
+    // The server the saved key and login token came from. A key only opens the server that
+    // handed it out, so a session from another one - an app version that used another
+    // server - must log in again.
+    fun saveServer(context: Context, server: String) {
+        prefs(context).edit { putString(KEY_SERVER, server) }
+    }
+    fun isSessionFor(context: Context, server: String): Boolean =
+        prefs(context).getString(KEY_SERVER, null) == server
     fun isLoginExpired(context: Context, maxAgeMillis: Long = 90L * 24 * 60 * 60 * 1000): Boolean {
         val lastLogin = prefs(context).getLong(KEY_LOGIN_TIME, 0L)
         return System.currentTimeMillis() - lastLogin > maxAgeMillis

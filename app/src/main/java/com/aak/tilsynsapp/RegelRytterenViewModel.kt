@@ -20,7 +20,6 @@ data class InspectorConfig(
 class RegelRytterenViewModel(application: Application) : AndroidViewModel(application) {
     private val _inspectors = MutableStateFlow(listOf(
         InspectorConfig("HAROB", "Harald", "Cykel"),
-        InspectorConfig("DJI", "Jimmy", "Bil"),
         InspectorConfig("MOJUS", "Just", "Cykel")
     ))
     val inspectors: StateFlow<List<InspectorConfig>> = _inspectors

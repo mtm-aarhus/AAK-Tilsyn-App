@@ -38,6 +38,15 @@ data class TilsynItem(
     @SerializedName("connected_case") val connectedCase: String? = null,
     @SerializedName("sharepoint_link") val sharepointLink: String? = null,
 
+    // The months a permission is left off the weekly list (1 = januar). TilsynAPI
+    // decides: a parklet is left off from October to March, and months chosen in
+    // the app ("Skjul i bestemte måneder") win over that.
+    @SerializedName("is_parklet") val isParklet: Boolean? = null,
+    @SerializedName("hidden_months") val hiddenMonths: List<Int>? = null,
+    @SerializedName("effective_hidden_months") val effectiveHiddenMonths: List<Int>? = null,
+    @SerializedName("default_hidden_months") val defaultHiddenMonths: List<Int>? = null,
+    @SerializedName("hidden_this_month") val hiddenThisMonth: Boolean? = null,
+
     // Henstilling specific (VejmanKassen)
     @SerializedName("HenstillingId") val henstillingId: String? = null,
     @SerializedName("CVR") val cvr: String? = null, // CVR can be long or string, usually safer with String if it can be empty
